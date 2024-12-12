@@ -1,0 +1,16 @@
+[project]
+name = "adirondax"
+description="A differentiable astrophysics simulator in JAX"
+authors = [
+    { name = "Philip Mocz", email = "philip.mocz@gmail.com" },
+]
+readme = "README.md"
+requires-python = ">=3.12"
+license = {file = "LICENSE"}
+dependencies = ["jax",
+                "numpy"]
+dynamic = ["version"]
+
+[project.urls]
+Documentation = "https://adirondax.readthedocs.io/"
+Homepage = "https://github.com/pmocz/adirondax"
