@@ -16,6 +16,9 @@ Homepage = "https://github.com/AdirondaxProject/adirondax"
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
+[tool.setuptools-git-versioning]
+enabled = true
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
