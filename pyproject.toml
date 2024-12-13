@@ -7,9 +7,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 license = {file = "LICENSE"}
-dependencies = ["jax",
-                "jaxopt",
-                "numpy"]
+dependencies = {file = ["requirements.txt"]}
 dynamic = ["version"]
 
 [project.urls]
