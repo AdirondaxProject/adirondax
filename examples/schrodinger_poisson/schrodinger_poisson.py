@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as img
 
 """
-Solve an Inverse-Problem that finds the initial wave function phases that 
+Solve an Inverse-Problem that finds the initial wave function phases that
 evolve under the Schrodinger-Poisson equations into a target density field
 
 Philip Mocz (2024)

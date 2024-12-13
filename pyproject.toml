@@ -10,7 +10,7 @@ license = {file = "LICENSE"}
 dynamic = ["version", "dependencies"]
 
 [project.urls]
-Documentation = "https://adirondax.readthedocs.io/"
+Documentation = "https://adirondax.readthedocs.io"
 Homepage = "https://github.com/AdirondaxProject/adirondax"
 
 [tool.setuptools.dynamic]
