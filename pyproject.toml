@@ -13,4 +13,4 @@ dynamic = ["version"]
 
 [project.urls]
 Documentation = "https://adirondax.readthedocs.io/"
-Homepage = "https://github.com/pmocz/adirondax"
+Homepage = "https://github.com/AdirondaxProject/adirondax"
