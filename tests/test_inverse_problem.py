@@ -66,16 +66,8 @@ def solve_inverse_problem():
 
 
 def test_forward_model():
-    assert abs(run_forward_model() - -0.249652) < 1e-4
+    assert abs(run_forward_model() - -0.249652) < 1e-5
 
 
 def test_solve_inverse_problem():
     assert abs(solve_inverse_problem() - 0.019558249) < 1e-4
-
-
-def main():
-    test_forward_model()
-    test_solve_inverse_problem()
-
-
-__main__ = main()
