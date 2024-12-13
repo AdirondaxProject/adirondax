@@ -20,5 +20,5 @@ dependencies = {file = ["requirements.txt"]}
 enabled = true
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-git-versioning>=2.0,<3"]
 build-backend = "setuptools.build_meta"
