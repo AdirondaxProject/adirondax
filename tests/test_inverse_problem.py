@@ -1,3 +1,4 @@
+import os
 import jax
 import jax.numpy as jnp
 import adirondax as adx
@@ -5,15 +6,18 @@ from jaxopt import ScipyMinimize
 import matplotlib.image as img
 
 
-def solve_inverse_problem():
-
-    target_data = img.imread("examples/schrodinger_poisson/target.png")[:, :, 0]
+def read_target():
+    file_path = os.path.join(os.path.dirname(__file__), "../examples/schrodinger_poisson/target.png")
+    target_data = img.imread(file_path)[:, :, 0]
     rho_target = jnp.flipud(jnp.array(target_data, dtype=float))
     rho_target = 1.0 - 0.5 * (rho_target - 0.5)
     rho_target /= jnp.mean(rho_target)
+    return rho_target
 
-    n = rho_target.shape[0]
-    nt = 100 * int(n / 128)
+
+def set_up_params():
+    n = 128
+    nt = 100
     t_stop = 0.03
     dt = t_stop / nt
     params = {
@@ -22,13 +26,34 @@ def solve_inverse_problem():
         "dt": dt,
         "nt": nt,
     }
+    return params
+
+
+def run_forward_model():
+    params = set_up_params()
+    sim = adx.Simulation(params)
+    xlin = jnp.linspace(0.0, 1.0, params["n"])
+    x, y = jnp.meshgrid(xlin, xlin, indexing="ij")
+    theta = -jnp.exp(-((x - 0.5) ** 2 + (y - 0.5) ** 2))
+    psi = jnp.exp(1.0j * theta)
+    psi = sim.evolve(psi, params["dt"], params["nt"])
+    theta = jnp.angle(psi)
+    return jnp.mean(theta)
+
+
+def solve_inverse_problem():
+
+    rho_target = read_target()
+    assert rho_target.shape[0] == 128
+
+    params = set_up_params()
 
     sim = adx.Simulation(params)
 
     @jax.jit
     def loss_function(theta, rho_target):
         psi = jnp.exp(1.0j * theta)
-        psi = sim.evolve(psi, dt, nt)
+        psi = sim.evolve(psi, params["dt"], params["nt"])
         rho = jnp.abs(psi) ** 2
         return jnp.mean((rho - rho_target) ** 2)
 
@@ -40,5 +65,17 @@ def solve_inverse_problem():
     return jnp.mean(theta)
 
 
+def test_forward_model():
+    assert abs(run_forward_model() - -0.249652) < 1e-4
+
+
 def test_solve_inverse_problem():
-    assert abs(solve_inverse_problem() - 0.019558249) < 1e-5
+    assert abs(solve_inverse_problem() - 0.019558249) < 1e-4
+
+
+def main():
+    test_forward_model()
+    test_solve_inverse_problem()
+
+
+__main__ = main()
