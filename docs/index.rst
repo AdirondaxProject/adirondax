@@ -1,5 +1,3 @@
-.. adirondax documentation master file
-
 adirondax
 =========
 
