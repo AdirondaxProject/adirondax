@@ -8,7 +8,7 @@
 [pypi-badge]:          https://img.shields.io/pypi/v/adirondax?label=PyPI&logo=pypi
 [workflow-test-link]:  https://github.com/AdirondaxProject/adirondax/actions/workflows/test-package.yml
 [workflow-test-badge]: https://github.com/AdirondaxProject/adirondax/actions/workflows/test-package.yml/badge.svg?event=push
-[docs-link]:           https://ditalini.readthedocs.io
+[docs-link]:           https://adirondax.readthedocs.io
 [docs-badge]:          https://readthedocs.org/projects/adirondax/badge
 
 A differentiable astrophysics simulator in JAX
