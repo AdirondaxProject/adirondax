@@ -10,6 +10,7 @@ class Simulation:
     Parameters
     ----------
       params (dict): The python dictionary that contains the simulation parameters.
+
     """
 
     def __init__(self, params):
@@ -31,7 +32,8 @@ class Simulation:
     def evolve(self, psi, dt, nt):
         """
         This function evolves the wave function psi.
-        Assumes a periodic domain [0,1] x [0,1] and <|psi|^2> = 1
+        Assumes a periodic domain [0,1] x [0,1] and
+        `<|psi|^2> = 1`.
 
         Parameters
         ----------

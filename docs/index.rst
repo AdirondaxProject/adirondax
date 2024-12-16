@@ -1,17 +1,18 @@
-.. adirondax documentation master file, created by
-   sphinx-quickstart on Thu Dec 12 16:03:39 2024.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. adirondax documentation master file
 
-adirondax documentation
-=======================
+adirondax
+=========
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+Adirondax is a scientific research software for conducting astrophysical and cosmological simulations and solving inverse problems. 
+It is written in JAX and GPU-ready.
 
+⚠️ Adirondax is currently being built and is not yet ready for use. Check back later! ⚠️
+
+.. automodule:: adirondax.simulation
+    :members:
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
+   pages/installation

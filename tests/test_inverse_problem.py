@@ -7,7 +7,9 @@ import matplotlib.image as img
 
 
 def read_target():
-    file_path = os.path.join(os.path.dirname(__file__), "../examples/schrodinger_poisson/target.png")
+    file_path = os.path.join(
+        os.path.dirname(__file__), "../examples/schrodinger_poisson/target.png"
+    )
     target_data = img.imread(file_path)[:, :, 0]
     rho_target = jnp.flipud(jnp.array(target_data, dtype=float))
     rho_target = 1.0 - 0.5 * (rho_target - 0.5)
