@@ -18,30 +18,31 @@ version = "main"
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
 
-html_title = 'adirondax'
+sys.path.insert(0, os.path.abspath(".."))
+
+html_title = "adirondax"
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.coverage',
-    'sphinx_design',
-    'sphinx_copybutton',
-    'sphinxemoji.sphinxemoji'
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.coverage",
+    "sphinx_design",
+    "sphinx_copybutton",
+    "sphinxemoji.sphinxemoji",
 ]
 
 # sphinx_book_theme options
 html_theme_options = {
-    'collapse_navigation': True,
-    'navigation_depth': 4,
-    'repository_url': "https://github.com/MESAHub/mesa",
-    'use_repository_button': True,
-    'icon_links': [
+    "collapse_navigation": True,
+    "navigation_depth": 4,
+    "repository_url": "https://github.com/AdirondaxProject/adirondax",
+    "use_repository_button": True,
+    "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/MESAHub/mesa",
+            "url": "https://github.com/AdirondaxProject/adirondax",
             "icon": "fa-brands fa-github",
         },
     ],
