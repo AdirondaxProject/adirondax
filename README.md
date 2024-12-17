@@ -37,6 +37,10 @@ Check out the `examples` directory for demonstrations of using Adirondax.
 
 ## Links
 
+* [Code repository](https://github.com/AdirondaxProject/adirondax) on GitHub (this page).
+* [Documentation](https://adirondax.readthedocs.io) for up-to-date information about installing and running adirondax.
+* [asv benchmarks](https://adirondaxproject.github.io/adirondax) to view timing of benchmark test problems (for Developers).
+
 
 ## Cite this repository
 
