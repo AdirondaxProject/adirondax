@@ -1,0 +1,1 @@
+{"regressions": [["bench_inverse_problem.InverseProblemSuite.time_inverse_problem", "graphs/arch-arm64/branch-main/cpu-Apple M3 Max/machine-C916PXT6XW/num_cpu-16/os-Darwin 24.1.0/python-3.12/ram-68719476736/bench_inverse_problem.InverseProblemSuite.time_inverse_problem.json", {}, null, 2.7462648959990474, 2.604970083000808, [[26, 36, 2.604970083000808, 2.7462648959990474]]]]}
