@@ -18,15 +18,28 @@ def read_target():
 
 
 def set_up_params():
+    # Define the parameters for the simulation
     n = 128
     nt = 100
     t_stop = 0.03
     dt = t_stop / nt
     params = {
-        "n": n,
-        "t_stop": t_stop,
-        "dt": dt,
-        "nt": nt,
+        "physics": {
+            "hydrodynamic": False,
+            "magnetic": False,
+            "quantum": True,
+            "gravity": True,
+        },
+        "mesh": {
+            "type": "cartesian",
+            "resolution": [n, n],
+            "boxsize": [1.0, 1.0],
+        },
+        "simulation": {
+            "stop_time": t_stop,
+            "timestep": dt,
+            "n_timestep": nt,
+        },
     }
     return params
 
@@ -34,11 +47,13 @@ def set_up_params():
 def run_forward_model():
     params = set_up_params()
     sim = adx.Simulation(params)
-    xlin = jnp.linspace(0.0, 1.0, params["n"])
+    nx = params["mesh"]["resolution"][0]
+    xlin = jnp.linspace(0.0, 1.0, nx)
     x, y = jnp.meshgrid(xlin, xlin, indexing="ij")
     theta = -jnp.exp(-((x - 0.5) ** 2 + (y - 0.5) ** 2))
-    psi = jnp.exp(1.0j * theta)
-    psi = sim.evolve(psi, params["dt"], params["nt"])
+    sim.state["psi"] = jnp.exp(1.0j * theta)
+    sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+    psi = sim.state["psi"]
     theta = jnp.angle(psi)
     return jnp.mean(theta)
 
@@ -54,8 +69,9 @@ def solve_inverse_problem():
 
     @jax.jit
     def loss_function(theta, rho_target):
-        psi = jnp.exp(1.0j * theta)
-        psi = sim.evolve(psi, params["dt"], params["nt"])
+        sim.state["psi"] = jnp.exp(1.0j * theta)
+        sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+        psi = sim.state["psi"]
         rho = jnp.abs(psi) ** 2
         return jnp.mean((rho - rho_target) ** 2)
 
@@ -63,6 +79,9 @@ def solve_inverse_problem():
     theta = jnp.zeros_like(rho_target)
     sol = opt.run(theta, rho_target)
     theta = jnp.mod(sol.params, 2.0 * jnp.pi) - jnp.pi
+
+    assert sol.state.success
+    assert sol.state.iter_num == 36
 
     return jnp.mean(theta)
 

@@ -28,19 +28,32 @@ class InverseProblemSuite:
         t_stop = 0.03
         dt = t_stop / nt
         self.params = {
-            "n": n,
-            "t_stop": t_stop,
-            "dt": dt,
-            "nt": nt,
+            "physics": {
+                "hydrodynamic": False,
+                "magnetic": False,
+                "quantum": True,
+                "gravity": True,
+            },
+            "mesh": {
+                "type": "cartesian",
+                "resolution": [n, n],
+                "boxsize": [1.0, 1.0],
+            },
+            "simulation": {
+                "stop_time": t_stop,
+                "timestep": dt,
+                "n_timestep": nt,
+            },
         }
 
     def run_forward_model(self):
         sim = adx.Simulation(self.params)
-        xlin = jnp.linspace(0.0, 1.0, self.params["n"])
+        xlin = jnp.linspace(0.0, 1.0, self.params["mesh"]["resolution"][0])
         x, y = jnp.meshgrid(xlin, xlin, indexing="ij")
         theta = -jnp.exp(-((x - 0.5) ** 2 + (y - 0.5) ** 2))
-        psi = jnp.exp(1.0j * theta)
-        psi = sim.evolve(psi, self.params["dt"], self.params["nt"])
+        sim.state["psi"] = jnp.exp(1.0j * theta)
+        sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+        psi = sim.state["psi"]
         theta = jnp.angle(psi)
         return jnp.mean(theta)
 
@@ -52,8 +65,9 @@ class InverseProblemSuite:
 
         @jax.jit
         def loss_function(theta, rho_target):
-            psi = jnp.exp(1.0j * theta)
-            psi = sim.evolve(psi, self.params["dt"], self.params["nt"])
+            sim.state["psi"] = jnp.exp(1.0j * theta)
+            sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+            psi = sim.state["psi"]
             rho = jnp.abs(psi) ** 2
             return jnp.mean((rho - rho_target) ** 2)
 

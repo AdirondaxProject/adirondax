@@ -27,11 +27,24 @@ def solve_inverse_problem():
     nt = 100 * int(n / 128)
     t_stop = 0.03
     dt = t_stop / nt
+
     params = {
-        "n": n,
-        "t_stop": t_stop,
-        "dt": dt,
-        "nt": nt,
+        "physics": {
+            "hydrodynamic": False,
+            "magnetic": False,
+            "quantum": True,
+            "gravity": True,
+        },
+        "mesh": {
+            "type": "cartesian",
+            "resolution": [n, n],
+            "boxsize": [1.0, 1.0],
+        },
+        "simulation": {
+            "stop_time": t_stop,
+            "timestep": dt,
+            "n_timestep": nt,
+        },
     }
 
     # Initialize the simulation
@@ -40,12 +53,13 @@ def solve_inverse_problem():
     # Define the loss function for the optimization
     @jax.jit
     def loss_function(theta, rho_target):
-        psi = jnp.exp(1.0j * theta)
-        psi = sim.evolve(psi, dt, nt)
+        sim.state["psi"] = jnp.exp(1.0j * theta)
+        sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+        psi = sim.state["psi"]
         rho = jnp.abs(psi) ** 2
         return jnp.mean((rho - rho_target) ** 2)
 
-    # Solve the inverse-problem
+    # Solve the inverse-problem (takes around 3 seconds on my macbook)
     opt = ScipyMinimize(
         method="l-bfgs-b", fun=loss_function, tol=1e-5, options={"disp": True}
     )
@@ -62,8 +76,9 @@ def solve_inverse_problem():
 def make_plot(sim, theta):
 
     # Re-run the simulation with the optimal initial conditions
-    psi = jnp.exp(1.0j * theta)
-    psi = sim.evolve(psi, sim.dt, sim.nt)
+    sim.state["psi"] = jnp.exp(1.0j * theta)
+    sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+    psi = sim.state["psi"]
 
     # Plot the solution
     plt.figure(figsize=(6, 4), dpi=80)

@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 from functools import partial
+import copy
 
 
 class Simulation:
@@ -14,11 +15,22 @@ class Simulation:
     """
 
     def __init__(self, params):
-        self._n = params["n"]
-        self._t_stop = params["t_stop"]
-        self._dt = params["dt"]
-        self._nt = params["nt"]
-        self._dim = 2
+
+        # simulation parameters
+        self._params = copy.deepcopy(params)
+        self._nt = params["simulation"]["n_timestep"]
+        self._dt = params["simulation"]["timestep"]
+        self._dim = len(params["mesh"]["resolution"])
+        self._nx = params["mesh"]["resolution"][0]
+        if self._dim > 1:
+            self._ny = params["mesh"]["resolution"][1]
+        if self._dim == 3:
+            self._nz = params["mesh"]["resolution"][2]
+
+        # simulation state
+        self.state = {}
+        if params["physics"]["quantum"]:
+            self.state["psi"] = jnp.zeros((self._nx, self._ny), dtype=jnp.complex64)
 
     @property
     def nt(self):
@@ -28,9 +40,15 @@ class Simulation:
     def dt(self):
         return self._dt
 
+    @property
+    def dim(self):
+        return self._dim
+
     @partial(jax.jit, static_argnames=["self", "dt", "nt"])
-    def evolve(self, psi, dt, nt):
+    def evolve(self, state, dt, nt):
         """
+        TODO: make general, update description
+
         This function evolves the wave function psi.
         Assumes a periodic domain [0,1] x [0,1] and
         `<|psi|^2> = 1`.
@@ -51,7 +69,7 @@ class Simulation:
         """
 
         # Simulation parameters
-        n = psi.shape[0]
+        n = state["psi"].shape[0]
         G = 4000.0  # gravitational constant
         L = 1.0  # domain size
 
@@ -81,6 +99,6 @@ class Simulation:
             return psi
 
         # Simulation Main Loop
-        psi = jax.lax.fori_loop(0, nt, update, init_val=psi)
+        state["psi"] = jax.lax.fori_loop(0, nt, update, init_val=state["psi"])
 
-        return psi
+        return state
