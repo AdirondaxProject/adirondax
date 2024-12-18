@@ -23,5 +23,5 @@ asv preview
 To push the results to the `gh-pages`  and push them to GitHub, do
 
 ```console
-asv gh-pages
+asv gh-pages --rewrite
 ```
