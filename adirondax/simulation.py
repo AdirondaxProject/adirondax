@@ -44,6 +44,10 @@ class Simulation:
     @property
     def dim(self):
         return self._dim
+    
+    @property
+    def params(self):
+        return self._params
 
     @partial(jax.jit, static_argnames=["self"])
     def evolve(self, state):
