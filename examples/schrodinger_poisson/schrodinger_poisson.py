@@ -1,5 +1,7 @@
 import jax
 import jax.numpy as jnp
+#import sys
+#sys.path.append("../../")
 import adirondax as adx
 from jaxopt import ScipyMinimize
 import time
@@ -53,8 +55,9 @@ def solve_inverse_problem():
     # Define the loss function for the optimization
     @jax.jit
     def loss_function(theta, rho_target):
+        sim.state["t"] = 0.0
         sim.state["psi"] = jnp.exp(1.0j * theta)
-        sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+        sim.state = sim.evolve(sim.state)
         psi = sim.state["psi"]
         rho = jnp.abs(psi) ** 2
         return jnp.mean((rho - rho_target) ** 2)
@@ -76,9 +79,11 @@ def solve_inverse_problem():
 def make_plot(sim, theta):
 
     # Re-run the simulation with the optimal initial conditions
+    sim.state["t"] = 0.0
     sim.state["psi"] = jnp.exp(1.0j * theta)
-    sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+    sim.state = sim.evolve(sim.state)
     psi = sim.state["psi"]
+    print(sim.state["t"])
 
     # Plot the solution
     plt.figure(figsize=(6, 4), dpi=80)

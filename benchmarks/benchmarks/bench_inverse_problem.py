@@ -51,8 +51,9 @@ class InverseProblemSuite:
         xlin = jnp.linspace(0.0, 1.0, self.params["mesh"]["resolution"][0])
         x, y = jnp.meshgrid(xlin, xlin, indexing="ij")
         theta = -jnp.exp(-((x - 0.5) ** 2 + (y - 0.5) ** 2))
+        sim.state["t"] = 0.0
         sim.state["psi"] = jnp.exp(1.0j * theta)
-        sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+        sim.state = sim.evolve(sim.state)
         psi = sim.state["psi"]
         theta = jnp.angle(psi)
         return jnp.mean(theta)
@@ -65,8 +66,9 @@ class InverseProblemSuite:
 
         @jax.jit
         def loss_function(theta, rho_target):
+            sim.state["t"] = 0.0
             sim.state["psi"] = jnp.exp(1.0j * theta)
-            sim.state = sim.evolve(sim.state, sim.dt, sim.nt)
+            sim.state = sim.evolve(sim.state)
             psi = sim.state["psi"]
             rho = jnp.abs(psi) ** 2
             return jnp.mean((rho - rho_target) ** 2)

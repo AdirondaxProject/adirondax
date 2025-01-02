@@ -29,6 +29,7 @@ class Simulation:
 
         # simulation state
         self.state = {}
+        self.state["t"] = 0.0
         if params["physics"]["quantum"]:
             self.state["psi"] = jnp.zeros((self._nx, self._ny), dtype=jnp.complex64)
 
@@ -44,8 +45,8 @@ class Simulation:
     def dim(self):
         return self._dim
 
-    @partial(jax.jit, static_argnames=["self", "dt", "nt"])
-    def evolve(self, state, dt, nt):
+    @partial(jax.jit, static_argnames=["self"])
+    def evolve(self, state):
         """
         TODO: make general, update description
 
@@ -70,6 +71,8 @@ class Simulation:
 
         # Simulation parameters
         n = state["psi"].shape[0]
+        dt = self._dt
+        nt = self._nt
         G = 4000.0  # gravitational constant
         L = 1.0  # domain size
 
@@ -100,5 +103,6 @@ class Simulation:
 
         # Simulation Main Loop
         state["psi"] = jax.lax.fori_loop(0, nt, update, init_val=state["psi"])
+        state["t"] += nt * dt
 
         return state
