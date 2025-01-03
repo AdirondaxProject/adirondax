@@ -3,15 +3,7 @@ import jax.numpy as jnp
 from functools import partial
 import copy
 
-from .hydro import (
-    get_conserved,
-    get_primitive,
-    get_gradient,
-    extrapolate_to_face,
-    apply_fluxes,
-    get_flux,
-    update_hydro,
-)
+from .hydro import get_conserved, update_hydro,
 
 
 class Simulation:
@@ -51,7 +43,7 @@ class Simulation:
         # simulation state
         self.state = {}
         self.state["t"] = 0.0
-        if params["physics"]["hydro"]:
+        if params["physics"]["hydrodynamic"]:
             self.state["rho"] = jnp.zeros((self._nx, self._ny))
             self.state["vx"] = jnp.zeros((self._nx, self._ny))
             self.state["vy"] = jnp.zeros((self._nx, self._ny))
@@ -118,7 +110,7 @@ class Simulation:
         ky = jnp.fft.ifftshift(ky)
         kSq = kx**2 + ky**2
 
-        if self.params["physics"]["hydro"]:
+        if self.params["physics"]["hydrodynamic"]:
             rho = state["rho"]
             vx = state["vx"]
             vy = state["vy"]
@@ -148,7 +140,7 @@ class Simulation:
                 # kick
                 state["psi"] = jnp.exp(-1.0j * dt * V) * psi
 
-            if self.params["physics"]["hydro"]:
+            if self.params["physics"]["hydrodynamic"]:
                 (
                     state["Mass"],
                     state["Momx"],

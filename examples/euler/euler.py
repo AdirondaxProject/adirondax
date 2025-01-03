@@ -27,7 +27,7 @@ def setup_simulation():
 
     params = {
         "physics": {
-            "hydro": True,
+            "hydrodynamic": True,
             "magnetic": False,
             "quantum": False,
             "gravity": False,
