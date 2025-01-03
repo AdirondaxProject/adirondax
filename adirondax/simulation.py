@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from functools import partial
 import copy
 
-from .hydro import get_conserved, update_hydro,
+from .hydro import get_conserved, update_hydro
 
 
 class Simulation:
