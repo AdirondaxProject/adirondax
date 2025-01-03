@@ -1,105 +1,89 @@
 import jax
 import jax.numpy as jnp
+
+# TODO: REMOVE THE FOLLOWING LINES
+import sys
+
+sys.path.append("../../")
+
+import adirondax as adx
 import time
+import matplotlib.pyplot as plt
+
+"""
+Solve the Kelvin-Helmholtz instability problem
+
+Philip Mocz (2025)
+"""
 
 
-@jax.jit
-def get_gradient(f):
-    """Calculate the gradients of a field"""
+def setup_simulation():
 
-    f_dx = jnp.roll(f, -1, axis=0) - jnp.roll(f, 1, axis=0)
-    f_dy = jnp.roll(f, -1, axis=1) - jnp.roll(f, 1, axis=1)
+    # Define the parameters for the simulation
+    n = 256
+    nt = 1500 * int(n / 128)
+    t_stop = 2.0
+    dt = t_stop / nt
 
-    return f_dx, f_dy
+    params = {
+        "physics": {
+            "hydro": True,
+            "magnetic": False,
+            "quantum": False,
+            "gravity": False,
+        },
+        "mesh": {
+            "type": "cartesian",
+            "resolution": [n, n],
+            "boxsize": [1.0, 1.0],
+        },
+        "simulation": {
+            "stop_time": t_stop,
+            "timestep": dt,
+            "n_timestep": nt,
+        },
+    }
 
+    # Initialize the simulation
+    sim = adx.Simulation(params)
 
-@jax.jit
-def extrapolate_to_face(f, f_dx, f_dy):
-    """Extrapolate the field from face centers to faces using gradients"""
+    # Set initial conditions
+    # opposite moving streams with perturbation
+    sim.state["t"] = 0.0
+    X, Y = sim.mesh
+    w0 = 0.1
+    sigma = 0.05 / jnp.sqrt(2.0)
+    sim.state["rho"] = 1.0 + (jnp.abs(Y - 0.5) < 0.25)
+    sim.state["vx"] = -0.5 + (jnp.abs(Y - 0.5) < 0.25)
+    sim.state["vy"] = (
+        w0
+        * jnp.sin(4.0 * jnp.pi * X)
+        * (
+            jnp.exp(-((Y - 0.25) ** 2) / (2.0 * sigma**2))
+            + jnp.exp(-((Y - 0.75) ** 2) / (2.0 * sigma**2))
+        )
+    )
+    sim.state["P"] = 2.5 * jnp.ones(X.shape)
 
-    f_XL = f - f_dx
-    f_XL = jnp.roll(f_XL, -1, axis=0)
-    f_XR = f + f_dx
-
-    f_YL = f - f_dy
-    f_YL = jnp.roll(f_YL, -1, axis=1)
-    f_YR = f + f_dy
-
-    return f_XL, f_XR, f_YL, f_YR
-
-
-@jax.jit
-def apply_fluxes(F, flux_F_X, flux_F_Y):
-    """Apply fluxes to conserved variables to update solution state"""
-
-    F += -flux_F_X
-    F += jnp.roll(flux_F_X, 1, axis=0)
-    F += -flux_F_Y
-    F += jnp.roll(flux_F_Y, 1, axis=1)
-
-    return F
-
-
-@jax.jit
-def get_flux(A_L, A_R, B_L, B_R):
-    """Calculate fluxes between 2 states"""
-
-    A_star = 0.5 * (A_L + A_R)
-    B_star = 0.5 * (B_L + B_R)
-
-    flux_A = B_star
-    flux_B = B_star**2 / A_star
-
-    flux_A -= 0.1 * (A_L - A_R)
-    flux_B -= 0.1 * (B_L - B_R)
-
-    return flux_A, flux_B
+    return sim
 
 
-# @jax.jit  # <---  XXX Adding this line slows down the code a lot!!
-def update(A, B):
-    """Take a simulation timestep"""
+def make_plot(sim):
 
-    A_dx, A_dy = get_gradient(A)
-    B_dx, B_dy = get_gradient(B)
-
-    A_XL, A_XR, A_YL, A_YR = extrapolate_to_face(A, A_dx, A_dy)
-    B_XL, B_XR, B_YL, B_YR = extrapolate_to_face(B, B_dx, B_dy)
-
-    flux_A_X, flux_B_X = get_flux(A_XL, A_XR, B_XL, B_XR)
-    flux_A_Y, flux_B_Y = get_flux(A_YL, A_YR, B_YL, B_YR)
-
-    A = apply_fluxes(A, flux_A_X, flux_A_Y)
-    B = apply_fluxes(B, flux_B_X, flux_B_Y)
-
-    return A, B
-
-
-@jax.jit
-def update_compiled_SLOW(A, B):
-    return update(A, B)
+    # Plot the solution
+    plt.figure(figsize=(6, 4), dpi=80)
+    plt.imshow(jnp.rot90(sim.state["rho"]), cmap="jet", vmin=0.8, vmax=2.2)
+    plt.colorbar(label="density")
+    plt.tight_layout()
+    plt.savefig("output.png", dpi=240)
+    plt.show()
 
 
 def main():
 
-    N = 1024
-
-    A = jnp.ones((N, N))
-    B = jnp.ones((N, N))
-    tic = time.time()
-    for _ in range(200):
-        (
-            A,
-            B,
-        ) = update(A, B)
-    print("Total time not compiled: ", time.time() - tic)
-
-    A = jnp.ones((N, N))
-    B = jnp.ones((N, N))
-    tic = time.time()
-    for _ in range(200):
-        A, B = update_compiled_SLOW(A, B)
-    print("Total time compiled: ", time.time() - tic)
+    sim = setup_simulation()
+    sim.state = sim.evolve(sim.state)
+    make_plot(sim)
 
 
 if __name__ == "__main__":
