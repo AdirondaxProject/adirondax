@@ -82,7 +82,13 @@ def make_plot(sim):
 def main():
 
     sim = setup_simulation()
+
+    # evolve the system (takes around 10 seconds on my macbook)
+    t0 = time.time()
     sim.state = sim.evolve(sim.state)
+    jax.block_until_ready(sim.state)
+    print("Solve time (s): ", time.time() - t0)
+
     make_plot(sim)
 
 
