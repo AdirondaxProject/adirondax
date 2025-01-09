@@ -102,11 +102,11 @@ def get_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, gamma):
     return flux_Mass, flux_Momx, flux_Momy, flux_Energy
 
 
-def update_hydro(Mass, Momx, Momy, Energy, vol, dx, gamma, dt):
+def update_hydro(rho, vx, vy, P, vol, dx, gamma, dt):
     """Take a simulation timestep"""
 
-    # get Primitive variables
-    rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, gamma, vol)
+    # get Conserved variables
+    Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, gamma, vol)
 
     # get time step (CFL) = dx / max signal speed
     # dt = courant_fac * jnp.min(dx / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2)))
@@ -143,4 +143,6 @@ def update_hydro(Mass, Momx, Momy, Energy, vol, dx, gamma, dt):
     Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dt)
     Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dt)
 
-    return Mass, Momx, Momy, Energy, rho
+    rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, gamma, vol)
+
+    return rho, vx, vy, P

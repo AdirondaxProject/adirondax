@@ -115,9 +115,6 @@ class Simulation:
             vx = state["vx"]
             vy = state["vy"]
             P = state["P"]
-            state["Mass"], state["Momx"], state["Momy"], state["Energy"] = (
-                get_conserved(rho, vx, vy, P, gamma, vol)
-            )
 
         def update(i, state):
 
@@ -142,16 +139,15 @@ class Simulation:
 
             if self.params["physics"]["hydrodynamic"]:
                 (
-                    state["Mass"],
-                    state["Momx"],
-                    state["Momy"],
-                    state["Energy"],
                     state["rho"],
+                    state["vx"],
+                    state["vy"],
+                    state["P"],
                 ) = update_hydro(
-                    state["Mass"],
-                    state["Momx"],
-                    state["Momy"],
-                    state["Energy"],
+                    state["rho"],
+                    state["vx"],
+                    state["vy"],
+                    state["P"],
                     vol,
                     dx,
                     gamma,

@@ -83,7 +83,7 @@ def main():
 
     sim = setup_simulation()
 
-    # evolve the system (takes around 10 seconds on my macbook)
+    # evolve the system (takes around 9 seconds on my macbook)
     t0 = time.time()
     sim.state = sim.evolve(sim.state)
     jax.block_until_ready(sim.state)
