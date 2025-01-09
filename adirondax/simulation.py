@@ -110,12 +110,6 @@ class Simulation:
         ky = jnp.fft.ifftshift(ky)
         kSq = kx**2 + ky**2
 
-        if self.params["physics"]["hydrodynamic"]:
-            rho = state["rho"]
-            vx = state["vx"]
-            vy = state["vy"]
-            P = state["P"]
-
         def update(i, state):
 
             # TODO: move these to separate functions
