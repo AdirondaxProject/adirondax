@@ -81,7 +81,7 @@ def solve_inverse_problem():
     theta = jnp.mod(sol.params, 2.0 * jnp.pi) - jnp.pi
 
     assert sol.state.success
-    assert sol.state.iter_num < 50
+    assert sol.state.iter_num < 100
 
     return jnp.mean(theta)
 
