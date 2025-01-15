@@ -53,9 +53,8 @@ class InverseProblemSuite:
         theta = -jnp.exp(-((x - 0.5) ** 2 + (y - 0.5) ** 2))
         sim.state["t"] = 0.0
         sim.state["psi"] = jnp.exp(1.0j * theta)
-        sim.state = sim.evolve(sim.state)
-        psi = sim.state["psi"]
-        theta = jnp.angle(psi)
+        sim.run()
+        theta = jnp.angle(sim.state["psi"])
         return jnp.mean(theta)
 
     def solve_inverse_problem(self):
@@ -68,9 +67,8 @@ class InverseProblemSuite:
         def loss_function(theta, rho_target):
             sim.state["t"] = 0.0
             sim.state["psi"] = jnp.exp(1.0j * theta)
-            sim.state = sim.evolve(sim.state)
-            psi = sim.state["psi"]
-            rho = jnp.abs(psi) ** 2
+            sim.run()
+            rho = jnp.abs(sim.state["psi"]) ** 2
             return jnp.mean((rho - rho_target) ** 2)
 
         opt = ScipyMinimize(method="l-bfgs-b", fun=loss_function, tol=1e-5)
