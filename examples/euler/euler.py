@@ -27,7 +27,7 @@ def setup_simulation():
 
     params = {
         "physics": {
-            "hydrodynamic": True,
+            "hydro": True,
             "magnetic": False,
             "quantum": False,
             "gravity": False,
@@ -42,13 +42,16 @@ def setup_simulation():
             "timestep": dt,
             "n_timestep": nt,
         },
+        "hydro": {
+            "eos": {"type": "ideal", "gamma": 5.0 / 3.0},
+        },
     }
 
     # Initialize the simulation
     sim = adx.Simulation(params)
 
     # Set initial conditions
-    # opposite moving streams with perturbation
+    # (opposite moving streams with perturbation)
     sim.state["t"] = 0.0
     X, Y = sim.mesh
     w0 = 0.1
@@ -83,10 +86,9 @@ def main():
 
     sim = setup_simulation()
 
-    # evolve the system (takes around 9 seconds on my macbook)
+    # Evolve the system (takes around 9 seconds on my macbook)
     t0 = time.time()
-    sim.state = sim.evolve(sim.state)
-    jax.block_until_ready(sim.state)
+    sim.run()
     print("Solve time (s): ", time.time() - t0)
 
     make_plot(sim)

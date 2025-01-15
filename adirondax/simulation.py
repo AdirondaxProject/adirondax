@@ -3,7 +3,10 @@ import jax.numpy as jnp
 from functools import partial
 import copy
 
-from .hydro import get_conserved, update_hydro
+from .constants import constants
+from .hydro import update_hydro
+from .quantum import quantum_kick, quantum_drift
+from .gravity import calculate_gravitational_potential
 
 
 class Simulation:
@@ -43,13 +46,18 @@ class Simulation:
         # simulation state
         self.state = {}
         self.state["t"] = 0.0
-        if params["physics"]["hydrodynamic"]:
+        if params["physics"]["hydro"]:
             self.state["rho"] = jnp.zeros((self._nx, self._ny))
             self.state["vx"] = jnp.zeros((self._nx, self._ny))
             self.state["vy"] = jnp.zeros((self._nx, self._ny))
             self.state["P"] = jnp.zeros((self._nx, self._ny))
         if params["physics"]["quantum"]:
             self.state["psi"] = jnp.zeros((self._nx, self._ny), dtype=jnp.complex64)
+
+        # internal simulation state -- should not be touched by user!
+        self._internal = {}
+        if params["physics"]["gravity"]:
+            self._internal["V"] = jnp.zeros((self._nx, self._ny))
 
     @property
     def nt(self):
@@ -76,8 +84,33 @@ class Simulation:
         X, Y = jnp.meshgrid(xlin, ylin, indexing="ij")
         return X, Y
 
+    @property
+    def fourier(self):
+        n = self._nx
+        L = self._Lx
+        klin = 2.0 * jnp.pi / L * jnp.arange(-n / 2, n / 2)
+        kx, ky = jnp.meshgrid(klin, klin)
+        kx = jnp.fft.ifftshift(kx)
+        ky = jnp.fft.ifftshift(ky)
+        return kx, ky
+
+    def _calc_grav_potential(self, state, kSq):
+        G = 4000.0  # XXX
+        rho_tot = 0.0
+        if self.params["physics"]["quantum"]:
+            rho_tot += jnp.abs(state["psi"]) ** 2
+        if self.params["physics"]["hydro"]:
+            rho_tot += state["rho"]
+        return calculate_gravitational_potential(rho_tot, G, kSq)
+
+    @property
+    def potential(self):
+        kx, ky = self.fourier
+        kSq = kx**2 + ky**2
+        return self._calc_grav_potential(self.state, kSq)
+
     @partial(jax.jit, static_argnames=["self"])
-    def evolve(self, state):
+    def _evolve(self, state):
         """
         This function evolves the simulation state according to the simulation parameters/physics.
 
@@ -88,50 +121,42 @@ class Simulation:
 
         Returns
         -------
-        psi: jax.pytree
+        state: jax.pytree
           The evolved state of the simulation.
         """
 
         # Simulation parameters
-        n = self._nx
         dt = self._dt
         nt = self._nt
-        G = 4000.0  # gravitational constant
-        L = 1.0  # domain size
-        gamma = 5.0 / 3.0  # adiabatic index
+        dx = self._dx
         vol = self._vol
         courant_fac = 0.4
-        dx = self._dx
+        if self.params["physics"]["hydro"]:
+            gamma = self.params["hydro"]["eos"]["gamma"]
 
         # Fourier space variables
-        klin = 2.0 * jnp.pi / L * jnp.arange(-n / 2, n / 2)
-        kx, ky = jnp.meshgrid(klin, klin)
-        kx = jnp.fft.ifftshift(kx)
-        ky = jnp.fft.ifftshift(ky)
-        kSq = kx**2 + ky**2
+        if self.params["physics"]["gravity"] or self.params["physics"]["quantum"]:
+            kx, ky = self.fourier
+            kSq = kx**2 + ky**2
+
+        # initialize potential
+        if self.params["physics"]["gravity"]:
+            self._internal["V"] = self._calc_grav_potential(state, kSq)
 
         def update(i, state):
 
-            # TODO: move these to separate functions
+            # Update the simulation state by one timestep
+            # according to a 2nd-order `kick-drift-kick` scheme
+    
+            # Kick (half-step)
+            if self.params["physics"]["quantum"] and self.params["physics"]["gravity"]:
+                state["psi"] = quantum_kick(state["psi"], self._internal["V"], dt / 2.0)
 
+            # Drift (full-step)
             if self.params["physics"]["quantum"]:
+                state["psi"] = quantum_drift(state["psi"], kSq, dt)
 
-                # drift
-                psi = state["psi"]
-                psihat = jnp.fft.fftn(psi)
-                psihat = jnp.exp(dt * (-1.0j * kSq / 2.0)) * psihat
-                psi = jnp.fft.ifftn(psihat)
-
-                # update potential
-                Vhat = -jnp.fft.fftn(4.0 * jnp.pi * G * (jnp.abs(psi) ** 2 - 1.0)) / (
-                    kSq + (kSq == 0)
-                )
-                V = jnp.real(jnp.fft.ifftn(Vhat))
-
-                # kick
-                state["psi"] = jnp.exp(-1.0j * dt * V) * psi
-
-            if self.params["physics"]["hydrodynamic"]:
+            if self.params["physics"]["hydro"]:
                 (
                     state["rho"],
                     state["vx"],
@@ -148,6 +173,14 @@ class Simulation:
                     dt,
                 )
 
+            # update potential
+            if self.params["physics"]["gravity"]:
+                self._internal["V"] = self._calc_grav_potential(state, kSq)
+
+            # Kick (half-step)
+            if self.params["physics"]["quantum"] and self.params["physics"]["gravity"]:
+                state["psi"] = quantum_kick(state["psi"], self._internal["V"], dt / 2.0)
+
             # update time
             state["t"] += nt * dt
 
@@ -157,3 +190,7 @@ class Simulation:
         state = jax.lax.fori_loop(0, nt, update, init_val=state)
 
         return state
+
+    def run(self):
+        self.state = self._evolve(self.state)
+        jax.block_until_ready(self.state)

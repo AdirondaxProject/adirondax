@@ -30,7 +30,7 @@ def setup_simulation():
 
     params = {
         "physics": {
-            "hydrodynamic": False,
+            "hydro": False,
             "magnetic": False,
             "quantum": True,
             "gravity": True,
@@ -69,12 +69,12 @@ def solve_inverse_problem(sim):
     def loss_function(theta, rho_target):
         sim.state["t"] = 0.0
         sim.state["psi"] = jnp.exp(1.0j * theta)
-        sim.state = sim.evolve(sim.state)
+        sim.run()
         psi = sim.state["psi"]
         rho = jnp.abs(psi) ** 2
         return jnp.mean((rho - rho_target) ** 2)
 
-    # Solve the inverse-problem (takes around 3 seconds on my macbook)
+    # Solve the inverse-problem (takes around 5 seconds on my macbook)
     opt = ScipyMinimize(
         method="l-bfgs-b", fun=loss_function, tol=1e-5, options={"disp": True}
     )
@@ -93,11 +93,10 @@ def rerun_simulation(sim, theta):
     # Re-run the simulation with the optimal initial conditions
     sim.state["t"] = 0.0
     sim.state["psi"] = jnp.exp(1.0j * theta)
-    sim.state = sim.evolve(sim.state)
-    psi = sim.state["psi"]
+    sim.run()
     print("Final time:", sim.state["t"])
 
-    return psi
+    return sim.state["psi"]
 
 
 def make_plot(psi, theta):

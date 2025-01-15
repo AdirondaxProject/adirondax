@@ -29,7 +29,7 @@ class InverseProblemSuite:
         dt = t_stop / nt
         self.params = {
             "physics": {
-                "hydrodynamic": False,
+                "hydro": False,
                 "magnetic": False,
                 "quantum": True,
                 "gravity": True,

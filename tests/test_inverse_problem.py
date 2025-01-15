@@ -25,7 +25,7 @@ def set_up_params():
     dt = t_stop / nt
     params = {
         "physics": {
-            "hydrodynamic": False,
+            "hydro": False,
             "magnetic": False,
             "quantum": True,
             "gravity": True,
