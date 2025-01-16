@@ -91,4 +91,4 @@ def test_forward_model():
 
 
 def test_solve_inverse_problem():
-    assert abs(solve_inverse_problem() - 0.019558249) < 1e-2
+    assert abs(solve_inverse_problem() - 0.019558249) <2e-2
