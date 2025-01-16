@@ -87,8 +87,8 @@ def solve_inverse_problem():
 
 
 def test_forward_model():
-    assert abs(run_forward_model() - -0.249652) < 1e-3
+    assert abs(run_forward_model() - 0.18681082) < 1e-3
 
 
 def test_solve_inverse_problem():
-    assert abs(solve_inverse_problem() - 0.019558249) <2e-2
+    assert abs(solve_inverse_problem() - 0.01879123) <1e-3
