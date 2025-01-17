@@ -55,7 +55,7 @@ def run_forward_model():
     sim.state["psi"] = jnp.exp(1.0j * theta)
     sim.run()
     theta = jnp.angle(sim.state["psi"])
-    return jnp.mean(theta)
+    return jnp.std(theta)
 
 
 def solve_inverse_problem():
@@ -73,7 +73,7 @@ def solve_inverse_problem():
         sim.state["psi"] = jnp.exp(1.0j * theta)
         sim.run()
         rho = jnp.abs(sim.state["psi"]) ** 2
-        return jnp.mean((rho - rho_target) ** 2)
+        return jnp.std((rho - rho_target) ** 2)
 
     opt = ScipyMinimize(method="l-bfgs-b", fun=loss_function, tol=1e-5)
     theta = jnp.zeros_like(rho_target)
@@ -87,8 +87,8 @@ def solve_inverse_problem():
 
 
 def test_forward_model():
-    assert abs(run_forward_model() - 0.18681082) < 1e-3
+    assert abs(run_forward_model() - 1.608471) < 1e-3
 
 
 def test_solve_inverse_problem():
-    assert abs(solve_inverse_problem() - 0.01879123) <1e-3
+    assert abs(solve_inverse_problem() - 0.00498549) < 1e-3
