@@ -27,13 +27,14 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install ruff pytest
+        python -m pip install -r requirements-dev.txt
         # if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install .
     - name: Lint with ruff
       run: |
-        ruff check
+        cd ${{ github.workspace }}
         ruff format --check
+        ruff check
     - name: Test with pytest
       run: |
         pytest
