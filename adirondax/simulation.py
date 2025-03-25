@@ -11,7 +11,7 @@ from .gravity import calculate_gravitational_potential
 
 class Simulation:
     """
-    Simulation: The base class for an astrophysics simulation.
+    Simulation: The base class for a multi-physics simulation.
 
     Parameters
     ----------
@@ -20,7 +20,6 @@ class Simulation:
     """
 
     def __init__(self, params):
-
         # simulation parameters
         self._params = copy.deepcopy(params)
         self._nt = params["simulation"]["n_timestep"]
@@ -144,10 +143,9 @@ class Simulation:
             self._internal["V"] = self._calc_grav_potential(state, kSq)
 
         def update(i, state):
-
             # Update the simulation state by one timestep
             # according to a 2nd-order `kick-drift-kick` scheme
-    
+
             # Kick (half-step)
             if self.params["physics"]["quantum"] and self.params["physics"]["gravity"]:
                 state["psi"] = quantum_kick(state["psi"], self._internal["V"], dt / 2.0)

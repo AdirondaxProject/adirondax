@@ -18,7 +18,6 @@ Philip Mocz (2025)
 
 
 def setup_simulation():
-
     # Define the parameters for the simulation
     n = 256
     nt = 1500 * int(n / 128)
@@ -72,7 +71,6 @@ def setup_simulation():
 
 
 def make_plot(sim):
-
     # Plot the solution
     plt.figure(figsize=(6, 4), dpi=80)
     plt.imshow(jnp.rot90(sim.state["rho"]), cmap="jet", vmin=0.8, vmax=2.2)
@@ -83,7 +81,6 @@ def make_plot(sim):
 
 
 def main():
-
     sim = setup_simulation()
 
     # Evolve the system (takes around 9 seconds on my macbook)

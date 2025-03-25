@@ -21,7 +21,6 @@ Philip Mocz (2024)
 
 
 def setup_simulation():
-
     # Define the parameters for the simulation
     n = 128
     nt = 100 * int(n / 128)
@@ -54,7 +53,6 @@ def setup_simulation():
 
 
 def solve_inverse_problem(sim):
-
     # Load the target density field
     target_data = img.imread("target.png")[:, :, 0]
     rho_target = jnp.flipud(jnp.array(target_data, dtype=float))
@@ -89,7 +87,6 @@ def solve_inverse_problem(sim):
 
 
 def rerun_simulation(sim, theta):
-
     # Re-run the simulation with the optimal initial conditions
     sim.state["t"] = 0.0
     sim.state["psi"] = jnp.exp(1.0j * theta)
@@ -100,7 +97,6 @@ def rerun_simulation(sim, theta):
 
 
 def make_plot(psi, theta):
-
     # Plot the solution
     plt.figure(figsize=(6, 4), dpi=80)
     grid = plt.GridSpec(1, 2, wspace=0.0, hspace=0.0)
@@ -130,7 +126,6 @@ def make_plot(psi, theta):
 
 
 def main():
-
     sim = setup_simulation()
     theta = solve_inverse_problem(sim)
     psi = rerun_simulation(sim, theta)

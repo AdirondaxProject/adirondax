@@ -58,7 +58,6 @@ class InverseProblemSuite:
         return jnp.mean(theta)
 
     def solve_inverse_problem(self):
-
         assert self.rho_target.shape[0] == 128
 
         sim = adx.Simulation(self.params)

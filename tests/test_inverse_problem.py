@@ -59,7 +59,6 @@ def run_forward_model():
 
 
 def solve_inverse_problem():
-
     rho_target = read_target()
     assert rho_target.shape[0] == 128
 
