@@ -20,7 +20,7 @@ Philip Mocz (2024)
 """
 
 
-def setup_simulation():
+def set_up_simulation():
     # Define the parameters for the simulation
     n = 128
     nt = 100 * int(n / 128)
@@ -126,7 +126,7 @@ def make_plot(psi, theta):
 
 
 def main():
-    sim = setup_simulation()
+    sim = set_up_simulation()
     theta = solve_inverse_problem(sim)
     psi = rerun_simulation(sim, theta)
     make_plot(psi, theta)

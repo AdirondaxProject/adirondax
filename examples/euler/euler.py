@@ -17,7 +17,7 @@ Philip Mocz (2025)
 """
 
 
-def setup_simulation():
+def set_up_simulation():
     # Define the parameters for the simulation
     n = 256
     nt = 1500 * int(n / 128)
@@ -81,7 +81,7 @@ def make_plot(sim):
 
 
 def main():
-    sim = setup_simulation()
+    sim = set_up_simulation()
 
     # Evolve the system (takes around 9 seconds on my macbook)
     t0 = time.time()
