@@ -7,7 +7,9 @@ import sys
 sys.path.append("../../")
 
 import adirondax as adx
-from jaxopt import ScipyMinimize
+import chex
+from typing import NamedTuple
+import optax
 import time
 import matplotlib.pyplot as plt
 import matplotlib.image as img
@@ -52,6 +54,55 @@ def set_up_simulation():
     return sim
 
 
+class InfoState(NamedTuple):
+    iter_num: chex.Numeric
+
+
+def print_info():
+    def init_fn(params):
+        del params
+        return InfoState(iter_num=0)
+
+    def update_fn(updates, state, params, *, value, grad, **extra_args):
+        del params, extra_args
+
+        jax.debug.print(
+            "Iteration: {i}, Loss: {v:.2e}, |grad|: {e:.2e}",
+            i=state.iter_num,
+            v=value,
+            e=optax.tree_utils.tree_norm(grad),
+        )
+        return updates, InfoState(iter_num=state.iter_num + 1)
+
+    return optax.GradientTransformationExtraArgs(init_fn, update_fn)
+
+
+def run_opt(init_params, fun, opt, max_iter, tol):
+    value_and_grad_fun = optax.value_and_grad_from_state(fun)
+
+    def step(carry):
+        params, state = carry
+        value, grad = value_and_grad_fun(params, state=state)
+        updates, state = opt.update(
+            grad, state, params, value=value, grad=grad, value_fn=fun
+        )
+        params = optax.apply_updates(params, updates)
+        return params, state
+
+    def continuing_criterion(carry):
+        _, state = carry
+        iter_num = optax.tree_utils.tree_get(state, "count")
+        grad = optax.tree_utils.tree_get(state, "grad")
+        err = optax.tree_utils.tree_norm(grad)
+        return (iter_num == 0) | ((iter_num < max_iter) & (err >= tol))
+
+    init_carry = (init_params, opt.init(init_params))
+    final_params, final_state = jax.lax.while_loop(
+        continuing_criterion, step, init_carry
+    )
+    return final_params, final_state
+
+
 def solve_inverse_problem(sim):
     # Load the target density field
     target_data = img.imread("target.png")[:, :, 0]
@@ -64,7 +115,7 @@ def solve_inverse_problem(sim):
 
     # Define the loss function for the optimization
     @jax.jit
-    def loss_function(theta, rho_target):
+    def loss_function(theta):
         sim.state["t"] = 0.0
         sim.state["psi"] = jnp.exp(1.0j * theta)
         sim.run()
@@ -72,15 +123,17 @@ def solve_inverse_problem(sim):
         rho = jnp.abs(psi) ** 2
         return jnp.mean((rho - rho_target) ** 2)
 
-    # Solve the inverse-problem (takes around 5 seconds on my macbook)
-    opt = ScipyMinimize(
-        method="l-bfgs-b", fun=loss_function, tol=1e-5, options={"disp": True}
-    )
+    # Solve the inverse-problem (takes around 8 seconds on my macbook)
+    # opt = optax.lbfgs()
+    opt = optax.chain(print_info(), optax.lbfgs())
     theta = jnp.zeros_like(rho_target)
+    init_params = theta
     t0 = time.time()
-    sol = opt.run(theta, rho_target)
+    sol, _ = run_opt(
+        init_params, loss_function, opt, max_iter=100, tol=1e-5
+    )
     print("Inverse-problem solve time (s): ", time.time() - t0)
-    theta = jnp.mod(sol.params, 2.0 * jnp.pi) - jnp.pi
+    theta = jnp.mod(sol, 2.0 * jnp.pi) - jnp.pi
     print("Mean theta:", jnp.mean(theta))
 
     return theta
@@ -121,7 +174,7 @@ def make_plot(psi, theta):
     ax2.set_aspect("equal")
     plt.title(r"${\rm final\,}\log_{10}(|\psi|^2)$")
     plt.tight_layout()
-    plt.savefig("output.png", dpi=240)
+    plt.savefig("output_optax.png", dpi=240)
     plt.show()
 
 
