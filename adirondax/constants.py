@@ -1,4 +1,8 @@
-# Physical Constants (cgs)
+# Copyright (c) 2025 The Adirondax Team.
+
+"""
+Physical Constants in cgs units
+"""
 
 constants = {
     "speed_of_light": 2.998e10,  # cm/s

@@ -5,9 +5,16 @@ authors = [
     { name = "Philip Mocz", email = "philip.mocz@gmail.com" },
 ]
 readme = "README.md"
-requires-python = ">=3.12"
-license = {file = "LICENSE"}
+requires-python = ">=3.11"
+license = "Apache-2.0"
 dynamic = ["version", "dependencies"]
+
+[tool.setuptools.packages.find]
+include = ["adirondax"]
+exclude = ["paper"]
+
+[tool.setuptools.package-data]
+"adirondax" = ["*.json"]
 
 [project.urls]
 Documentation = "https://adirondax.readthedocs.io"
@@ -16,9 +23,14 @@ Homepage = "https://github.com/AdirondaxProject/adirondax"
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
+[project.optional-dependencies]
+cuda12 = [
+    "jax[cuda12]==0.5.3",
+]
+
 [tool.setuptools-git-versioning]
 enabled = true
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "setuptools-git-versioning>=2.0,<3"]
+requires = ["setuptools>=70.1.1", "wheel", "setuptools-git-versioning>=2.0,<3"]
 build-backend = "setuptools.build_meta"
