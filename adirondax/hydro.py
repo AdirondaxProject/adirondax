@@ -4,7 +4,6 @@ import jax.numpy as jnp
 # Pure functions for hydro simulation
 
 
-@jax.jit
 def get_conserved(rho, vx, vy, P, gamma, vol):
     """Calculate the conserved variables from the primitive variables"""
 
@@ -16,7 +15,6 @@ def get_conserved(rho, vx, vy, P, gamma, vol):
     return Mass, Momx, Momy, Energy
 
 
-@jax.jit
 def get_primitive(Mass, Momx, Momy, Energy, gamma, vol):
     """Calculate the primitive variable from the conserved variables"""
 
@@ -28,7 +26,6 @@ def get_primitive(Mass, Momx, Momy, Energy, gamma, vol):
     return rho, vx, vy, P
 
 
-@jax.jit
 def get_gradient(f, dx):
     """Calculate the gradients of a field"""
 
@@ -39,7 +36,6 @@ def get_gradient(f, dx):
     return f_dx, f_dy
 
 
-@jax.jit
 def extrapolate_to_face(f, f_dx, f_dy, dx):
     """Extrapolate the field from face centers to faces using gradients"""
 
@@ -54,7 +50,6 @@ def extrapolate_to_face(f, f_dx, f_dy, dx):
     return f_XL, f_XR, f_YL, f_YR
 
 
-@jax.jit
 def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
     """Apply fluxes to conserved variables to update solution state"""
 
@@ -66,7 +61,6 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
     return F
 
 
-@jax.jit
 def get_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, gamma):
     """Calculate fluxes between 2 states with local Lax-Friedrichs/Rusanov rule"""
 
@@ -102,7 +96,6 @@ def get_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, gamma):
     return flux_Mass, flux_Momx, flux_Momy, flux_Energy
 
 
-@jax.jit
 def update_hydro(rho, vx, vy, P, vol, dx, gamma, dt):
     """Take a simulation timestep"""
 

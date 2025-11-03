@@ -84,7 +84,7 @@ class Simulation:
         return X, Y
 
     @property
-    def fourier(self):
+    def kgrid(self):
         n = self._nx
         L = self._Lx
         klin = 2.0 * jnp.pi / L * jnp.arange(-n / 2, n / 2)
@@ -93,20 +93,22 @@ class Simulation:
         ky = jnp.fft.ifftshift(ky)
         return kx, ky
 
-    def _calc_grav_potential(self, state, kSq):
+    def _calc_grav_potential(self, state, k_sq):
         G = 4000.0  # XXX
         rho_tot = 0.0
         if self.params["physics"]["quantum"]:
             rho_tot += jnp.abs(state["psi"]) ** 2
         if self.params["physics"]["hydro"]:
             rho_tot += state["rho"]
-        return calculate_gravitational_potential(rho_tot, G, kSq)
+        rho_bar = jnp.mean(rho_tot)
+        V = calculate_gravitational_potential(rho_tot, k_sq, G, rho_bar)
+        return V
 
     @property
     def potential(self):
-        kx, ky = self.fourier
-        kSq = kx**2 + ky**2
-        return self._calc_grav_potential(self.state, kSq)
+        kx, ky = self.kgrid
+        k_sq = kx**2 + ky**2
+        return self._calc_grav_potential(self.state, k_sq)
 
     @partial(jax.jit, static_argnames=["self"])
     def _evolve(self, state):
@@ -135,12 +137,12 @@ class Simulation:
 
         # Fourier space variables
         if self.params["physics"]["gravity"] or self.params["physics"]["quantum"]:
-            kx, ky = self.fourier
-            kSq = kx**2 + ky**2
+            kx, ky = self.kgrid
+            k_sq = kx**2 + ky**2
 
         # initialize potential
         if self.params["physics"]["gravity"]:
-            self._internal["V"] = self._calc_grav_potential(state, kSq)
+            self._internal["V"] = self._calc_grav_potential(state, k_sq)
 
         def update(i, state):
             # Update the simulation state by one timestep
@@ -148,11 +150,13 @@ class Simulation:
 
             # Kick (half-step)
             if self.params["physics"]["quantum"] and self.params["physics"]["gravity"]:
-                state["psi"] = quantum_kick(state["psi"], self._internal["V"], dt / 2.0)
+                state["psi"] = quantum_kick(
+                    state["psi"], self._internal["V"], 1.0, dt / 2.0
+                )
 
             # Drift (full-step)
             if self.params["physics"]["quantum"]:
-                state["psi"] = quantum_drift(state["psi"], kSq, dt)
+                state["psi"] = quantum_drift(state["psi"], k_sq, 1.0, dt)
 
             if self.params["physics"]["hydro"]:
                 (
@@ -173,11 +177,13 @@ class Simulation:
 
             # update potential
             if self.params["physics"]["gravity"]:
-                self._internal["V"] = self._calc_grav_potential(state, kSq)
+                self._internal["V"] = self._calc_grav_potential(state, k_sq)
 
             # Kick (half-step)
             if self.params["physics"]["quantum"] and self.params["physics"]["gravity"]:
-                state["psi"] = quantum_kick(state["psi"], self._internal["V"], dt / 2.0)
+                state["psi"] = quantum_kick(
+                    state["psi"], self._internal["V"], 1.0, dt / 2.0
+                )
 
             # update time
             state["t"] += nt * dt
