@@ -1,3 +1,9 @@
+<p align="center">
+  <a href="https://adirondax.readthedocs.io">
+    <img src="docs/_static/adirondax-logo.svg" alt="adirondax" width="400"/>
+  </a>
+</p>
+
 # adirondax
 
 [![Repo Status][status-badge]][status-link]

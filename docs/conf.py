@@ -22,6 +22,8 @@ version = "main"
 sys.path.insert(0, os.path.abspath(".."))
 
 html_title = "adirondax"
+html_logo = "_static/adirondax-logo.svg"
+html_favicon = "_static/adirondax-favicon.png"
 
 extensions = [
     "sphinx.ext.autodoc",
