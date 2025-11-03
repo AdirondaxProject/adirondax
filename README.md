@@ -3,6 +3,7 @@
 [![Repo Status][status-badge]][status-link]
 [![PyPI Version Status][pypi-badge]][pypi-link]
 [![Test Status][workflow-test-badge]][workflow-test-link]
+[![Coverage][coverage-badge]][coverage-link]
 [![Ruff][ruff-badge]][ruff-link]
 [![asv][asv-badge]][asv-link]
 [![Readthedocs Status][docs-badge]][docs-link]
@@ -14,6 +15,8 @@
 [pypi-badge]:          https://img.shields.io/pypi/v/adirondax?label=PyPI&logo=pypi
 [workflow-test-link]:  https://github.com/AdirondaxProject/adirondax/actions/workflows/test-package.yml
 [workflow-test-badge]: https://github.com/AdirondaxProject/adirondax/actions/workflows/test-package.yml/badge.svg?event=push
+[coverage-link]:       https://app.codecov.io/gh/AdirondaxProject/adirondax
+[coverage-badge]:      https://codecov.io/github/adirondaxproject/adirondax/graph/adirondax-server/badge.svg
 [ruff-link]:           https://github.com/astral-sh/ruff
 [ruff-badge]:          https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
 [asv-link]:            https://adirondaxproject.github.io/adirondax-benchmarks/
