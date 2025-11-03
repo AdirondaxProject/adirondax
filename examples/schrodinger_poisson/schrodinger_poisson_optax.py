@@ -129,9 +129,7 @@ def solve_inverse_problem(sim):
     theta = jnp.zeros_like(rho_target)
     init_params = theta
     t0 = time.time()
-    sol, _ = run_opt(
-        init_params, loss_function, opt, max_iter=100, tol=1e-5
-    )
+    sol, _ = run_opt(init_params, loss_function, opt, max_iter=100, tol=1e-5)
     print("Inverse-problem solve time (s): ", time.time() - t0)
     theta = jnp.mod(sol, 2.0 * jnp.pi) - jnp.pi
     print("Mean theta:", jnp.mean(theta))
