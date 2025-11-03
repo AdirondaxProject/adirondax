@@ -1,3 +1,6 @@
+import os
+import sys
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -7,7 +10,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "adirondax"
-copyright = "2024, Philip Mocz"
+copyright = "2025, Philip Mocz"
 author = "Philip Mocz"
 language = "en"
 version = "main"
@@ -15,9 +18,6 @@ version = "main"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
-
-import os
-import sys
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -38,7 +38,10 @@ html_theme_options = {
     "collapse_navigation": True,
     "navigation_depth": 4,
     "repository_url": "https://github.com/AdirondaxProject/adirondax",
+    "path_to_docs": "docs/",
     "use_repository_button": True,
+    "use_edit_page_button": True,
+    "use_source_button": True,
     "icon_links": [
         {
             "name": "GitHub",

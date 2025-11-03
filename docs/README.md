@@ -1,7 +1,7 @@
 To build documentation, install required packages:
 
 ```console
-pip install -r docs/requirements.txt
+pip install -r requirements.txt
 ```
 
 and do 
