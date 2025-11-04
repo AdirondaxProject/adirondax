@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from adirondax.hydro.common2d import (
+from .common2d import (
     get_curl,
     get_div,
     get_avg,
