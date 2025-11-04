@@ -6,7 +6,7 @@ import sys
 sys.path.append("../../")
 
 import adirondax as adx
-from adirondax.hydro.mhd2d import get_curl, get_avg
+from adirondax.hydro.common2d import get_curl, get_avg
 import time
 import matplotlib.pyplot as plt
 
