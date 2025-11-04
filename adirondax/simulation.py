@@ -224,16 +224,9 @@ class Simulation:
             return (new_state, new_V), None
 
         # Run the entire loop as a single JIT-compiled function
-        # def run_loop(carry):
-        #    final_carry, _ = jax.lax.scan(
-        #        step_fn, carry, xs=None, length=nt, unroll=True
-        #    )
-        #    return final_carry
-
         def run_loop(carry):
-            for _ in range(nt):
-                carry, _ = step_fn(carry, None)
-            return carry
+            final_carry, _ = jax.lax.scan(step_fn, carry, xs=None, length=nt)
+            return final_carry
 
         # Execute the compiled loop
         state, V = run_loop(carry)
