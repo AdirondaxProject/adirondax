@@ -147,15 +147,15 @@ class Simulation:
         if use_gravity:
             V = self._calc_grav_potential(state, k_sq, use_quantum, use_hydro)
 
-        # Build the carry: (state, V)
-        carry = (state, V)
+        # Build the carry: (state, V, k_sq)
+        carry = (state, V, k_sq)
 
         def step_fn(carry, _):
             """
             Pure step function: advances state by one timestep.
             Returns new carry and None (no stacked outputs).
             """
-            state, V = carry
+            state, V, k_sq = carry
 
             # Create new state dict to avoid mutation
             new_state = {}
@@ -221,7 +221,7 @@ class Simulation:
             # Update time
             new_state["t"] = state["t"] + dt
 
-            return (new_state, new_V), None
+            return (new_state, new_V, k_sq), None
 
         # Run the entire loop as a single JIT-compiled function
         def run_loop(carry):
@@ -229,7 +229,7 @@ class Simulation:
             return final_carry
 
         # Execute the compiled loop
-        state, V = run_loop(carry)
+        state, _, _ = run_loop(carry)
 
         return state
 
@@ -238,9 +238,4 @@ class Simulation:
         Run the simulation
         """
         self.state = self._evolve(self.state)
-        if "psi" in self.state:
-            jax.block_until_ready(self.state["psi"])
-        elif "rho" in self.state:
-            jax.block_until_ready(self.state["rho"])
-        else:
-            jax.block_until_ready(self.state["t"])
+        jax.block_until_ready(self.state)
