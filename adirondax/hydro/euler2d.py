@@ -1,7 +1,7 @@
-import jax
 import jax.numpy as jnp
+from .common2d import get_gradient, extrapolate_to_face, apply_fluxes
 
-# Pure functions for hydro simulation
+# Pure functions for 2D Euler hydrodynamics
 
 
 def get_conserved(rho, vx, vy, P, gamma, vol):
@@ -24,41 +24,6 @@ def get_primitive(Mass, Momx, Momy, Energy, gamma, vol):
     P = (Energy / vol - 0.5 * rho * (vx**2 + vy**2)) * (gamma - 1.0)
 
     return rho, vx, vy, P
-
-
-def get_gradient(f, dx):
-    """Calculate the gradients of a field"""
-
-    # (right - left) / 2dx
-    f_dx = (jnp.roll(f, -1, axis=0) - jnp.roll(f, 1, axis=0)) / (2.0 * dx)
-    f_dy = (jnp.roll(f, -1, axis=1) - jnp.roll(f, 1, axis=1)) / (2.0 * dx)
-
-    return f_dx, f_dy
-
-
-def extrapolate_to_face(f, f_dx, f_dy, dx):
-    """Extrapolate the field from face centers to faces using gradients"""
-
-    f_XL = f - f_dx * dx / 2.0
-    f_XL = jnp.roll(f_XL, -1, axis=0)  # right/up roll
-    f_XR = f + f_dx * dx / 2.0
-
-    f_YL = f - f_dy * dx / 2.0
-    f_YL = jnp.roll(f_YL, -1, axis=1)
-    f_YR = f + f_dy * dx / 2.0
-
-    return f_XL, f_XR, f_YL, f_YR
-
-
-def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
-    """Apply fluxes to conserved variables to update solution state"""
-
-    F += -dt * dx * flux_F_X
-    F += dt * dx * jnp.roll(flux_F_X, 1, axis=0)  # left/down roll
-    F += -dt * dx * flux_F_Y
-    F += dt * dx * jnp.roll(flux_F_Y, 1, axis=1)
-
-    return F
 
 
 def get_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, gamma):
@@ -96,11 +61,11 @@ def get_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, gamma):
     return flux_Mass, flux_Momx, flux_Momy, flux_Energy
 
 
-def update_hydro(rho, vx, vy, P, vol, dx, gamma, dt):
+def hydro_euler2d_fluxes(rho, vx, vy, P, gamma, dx, dt):
     """Take a simulation timestep"""
 
     # get Conserved variables
-    Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, gamma, vol)
+    Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, gamma, dx**2)
 
     # get time step (CFL) = dx / max signal speed
     # dt = courant_fac * jnp.min(dx / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2)))
@@ -137,6 +102,6 @@ def update_hydro(rho, vx, vy, P, vol, dx, gamma, dt):
     Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dt)
     Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dt)
 
-    rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, gamma, vol)
+    rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, gamma, dx**2)
 
     return rho, vx, vy, P

@@ -4,7 +4,8 @@ from functools import partial
 import copy
 
 from .constants import constants
-from .hydro import update_hydro
+from .hydro.euler2d import hydro_euler2d_fluxes
+from .hydro.mhd2d import hydro_mhd2d_fluxes
 from .quantum import quantum_kick, quantum_drift
 from .gravity import calculate_gravitational_potential
 
@@ -50,6 +51,9 @@ class Simulation:
             self.state["vx"] = jnp.zeros((self._nx, self._ny))
             self.state["vy"] = jnp.zeros((self._nx, self._ny))
             self.state["P"] = jnp.zeros((self._nx, self._ny))
+        if params["physics"]["magnetic"]:
+            self.state["bx"] = jnp.zeros((self._nx, self._ny))
+            self.state["by"] = jnp.zeros((self._nx, self._ny))
         if params["physics"]["quantum"]:
             self.state["psi"] = jnp.zeros((self._nx, self._ny), dtype=jnp.complex64)
 
@@ -130,8 +134,8 @@ class Simulation:
         dt = self._dt
         nt = self._nt
         dx = self._dx
-        vol = self._vol
-        courant_fac = 0.4
+        # vol = self._vol
+        # courant_fac = 0.4
         if self.params["physics"]["hydro"]:
             gamma = self.params["hydro"]["eos"]["gamma"]
 
@@ -144,7 +148,7 @@ class Simulation:
         if self.params["physics"]["gravity"]:
             self._internal["V"] = self._calc_grav_potential(state, k_sq)
 
-        def update(i, state):
+        def update(_, state):
             # Update the simulation state by one timestep
             # according to a 2nd-order `kick-drift-kick` scheme
 
@@ -159,21 +163,40 @@ class Simulation:
                 state["psi"] = quantum_drift(state["psi"], k_sq, 1.0, dt)
 
             if self.params["physics"]["hydro"]:
-                (
-                    state["rho"],
-                    state["vx"],
-                    state["vy"],
-                    state["P"],
-                ) = update_hydro(
-                    state["rho"],
-                    state["vx"],
-                    state["vy"],
-                    state["P"],
-                    vol,
-                    dx,
-                    gamma,
-                    dt,
-                )
+                if self.params["physics"]["magnetic"]:
+                    (
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                        state["bx"],
+                        state["by"],
+                    ) = hydro_mhd2d_fluxes(
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                        state["bx"],
+                        state["by"],
+                        gamma,
+                        dx,
+                        dt,
+                    )
+                else:
+                    (
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                    ) = hydro_euler2d_fluxes(
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                        gamma,
+                        dx,
+                        dt,
+                    )
 
             # update potential
             if self.params["physics"]["gravity"]:
@@ -186,7 +209,7 @@ class Simulation:
                 )
 
             # update time
-            state["t"] += nt * dt
+            state["t"] += dt
 
             return state
 
@@ -196,5 +219,8 @@ class Simulation:
         return state
 
     def run(self):
+        """
+        Run the simulation
+        """
         self.state = self._evolve(self.state)
         jax.block_until_ready(self.state)

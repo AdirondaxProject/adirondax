@@ -1,4 +1,3 @@
-import jax
 import jax.numpy as jnp
 
 # TODO: REMOVE THE FOLLOWING LINES
@@ -7,11 +6,15 @@ import sys
 sys.path.append("../../")
 
 import adirondax as adx
+from adirondax.hydro.mhd2d import get_curl, get_avg
 import time
 import matplotlib.pyplot as plt
 
+# switch on for double precision
+# jax.config.update("jax_enable_x64", True)
+
 """
-Simulate the Kelvin-Helmholtz instability
+Simulate the Orszag-Tang vortex
 
 Philip Mocz (2025)
 """
@@ -19,22 +22,25 @@ Philip Mocz (2025)
 
 def set_up_simulation():
     # Define the parameters for the simulation
-    n = 256
-    nt = 1500 * int(n / 128)
-    t_stop = 2.0
+    n = 512
+    nt = 100 * int(n / 32)
+    t_stop = 0.5
     dt = t_stop / nt
+    gamma = 5.0 / 3.0
+    box_size = 1.0
+    dx = box_size / n
 
     params = {
         "physics": {
             "hydro": True,
-            "magnetic": False,
+            "magnetic": True,
             "quantum": False,
             "gravity": False,
         },
         "mesh": {
             "type": "cartesian",
             "resolution": [n, n],
-            "boxsize": [1.0, 1.0],
+            "boxsize": [box_size, box_size],
         },
         "simulation": {
             "stop_time": t_stop,
@@ -42,7 +48,7 @@ def set_up_simulation():
             "n_timestep": nt,
         },
         "hydro": {
-            "eos": {"type": "ideal", "gamma": 5.0 / 3.0},
+            "eos": {"type": "ideal", "gamma": gamma},
         },
     }
 
@@ -50,22 +56,24 @@ def set_up_simulation():
     sim = adx.Simulation(params)
 
     # Set initial conditions
-    # (opposite moving streams with perturbation)
     sim.state["t"] = 0.0
     X, Y = sim.mesh
-    w0 = 0.1
-    sigma = 0.05 / jnp.sqrt(2.0)
-    sim.state["rho"] = 1.0 + (jnp.abs(Y - 0.5) < 0.25)
-    sim.state["vx"] = -0.5 + (jnp.abs(Y - 0.5) < 0.25)
-    sim.state["vy"] = (
-        w0
-        * jnp.sin(4.0 * jnp.pi * X)
-        * (
-            jnp.exp(-((Y - 0.25) ** 2) / (2.0 * sigma**2))
-            + jnp.exp(-((Y - 0.75) ** 2) / (2.0 * sigma**2))
-        )
-    )
-    sim.state["P"] = 2.5 * jnp.ones(X.shape)
+    sim.state["rho"] = (gamma**2 / (4.0 * jnp.pi)) * jnp.ones(X.shape)
+    sim.state["vx"] = -jnp.sin(2.0 * jnp.pi * Y)
+    sim.state["vy"] = jnp.sin(2.0 * jnp.pi * X)
+    P_gas = (gamma / (4.0 * jnp.pi)) * jnp.ones(X.shape)
+    # (Az is at top-right node of each cell)
+    xlin_node = jnp.linspace(dx, box_size, n)
+    Xn, Yn = jnp.meshgrid(xlin_node, xlin_node, indexing="ij")
+    Az = jnp.cos(4.0 * jnp.pi * Xn) / (4.0 * jnp.pi * jnp.sqrt(4.0 * jnp.pi)) + jnp.cos(
+        2.0 * jnp.pi * Yn
+    ) / (2.0 * jnp.pi * jnp.sqrt(4.0 * jnp.pi))
+    bx, by = get_curl(Az, dx)
+    Bx, By = get_avg(bx, by)
+    P_tot = P_gas + 0.5 * (Bx**2 + By**2)
+    sim.state["P"] = P_tot
+    sim.state["bx"] = bx
+    sim.state["by"] = by
 
     return sim
 
@@ -73,7 +81,7 @@ def set_up_simulation():
 def make_plot(sim):
     # Plot the solution
     plt.figure(figsize=(6, 4), dpi=80)
-    plt.imshow(jnp.rot90(sim.state["rho"]), cmap="jet", vmin=0.8, vmax=2.2)
+    plt.imshow(jnp.rot90(sim.state["rho"]), cmap="jet", vmin=0.06, vmax=0.5)
     plt.colorbar(label="density")
     plt.tight_layout()
     plt.savefig("output.png", dpi=240)
