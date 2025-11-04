@@ -134,7 +134,7 @@ class Simulation:
         use_quantum = self.params["physics"]["quantum"]
         use_gravity = self.params["physics"]["gravity"]
 
-        gamma = self.params["hydro"]["eos"]["gamma"] if use_hydro else 1.0
+        gamma = self.params["hydro"]["eos"]["gamma"] if use_hydro else None
 
         # Precompute Fourier space variables
         k_sq = None
@@ -223,11 +223,17 @@ class Simulation:
 
             return (new_state, new_V), None
 
-        # Compile and run the entire loop as a single JIT-compiled function
-        @jax.jit
+        # Run the entire loop as a single JIT-compiled function
+        # def run_loop(carry):
+        #    final_carry, _ = jax.lax.scan(
+        #        step_fn, carry, xs=None, length=nt, unroll=True
+        #    )
+        #    return final_carry
+
         def run_loop(carry):
-            final_carry, _ = jax.lax.scan(step_fn, carry, xs=None, length=nt)
-            return final_carry
+            for _ in range(nt):
+                carry, _ = step_fn(carry, None)
+            return carry
 
         # Execute the compiled loop
         state, V = run_loop(carry)
