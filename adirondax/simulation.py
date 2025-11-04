@@ -86,12 +86,12 @@ class Simulation:
         ky = jnp.fft.ifftshift(ky)
         return kx, ky
 
-    def _calc_grav_potential(self, state, k_sq):
+    def _calc_grav_potential(self, state, k_sq, use_quantum, use_hydro):
         G = 4000.0  # XXX
         rho_tot = 0.0
-        if self.params["physics"]["quantum"]:
+        if use_quantum:
             rho_tot += jnp.abs(state["psi"]) ** 2
-        if self.params["physics"]["hydro"]:
+        if use_hydro:
             rho_tot += state["rho"]
         rho_bar = jnp.mean(rho_tot)
         V = calculate_gravitational_potential(rho_tot, k_sq, G, rho_bar)
@@ -101,7 +101,12 @@ class Simulation:
     def potential(self):
         kx, ky = self.kgrid
         k_sq = kx**2 + ky**2
-        return self._calc_grav_potential(self.state, k_sq)
+        return self._calc_grav_potential(
+            self.state,
+            k_sq,
+            self.params["physics"]["quantum"],
+            self.params["physics"]["hydro"],
+        )
 
     def _evolve(self, state):
         """
@@ -140,7 +145,7 @@ class Simulation:
         # Initialize potential
         V = None
         if use_gravity:
-            V = self._calc_grav_potential(state, k_sq)
+            V = self._calc_grav_potential(state, k_sq, use_quantum, use_hydro)
 
         # Build the carry: (state, V)
         carry = (state, V)
@@ -206,7 +211,7 @@ class Simulation:
             new_V = V
             if use_gravity:
                 new_V = self._calc_grav_potential(
-                    new_state if use_hydro else state, k_sq
+                    new_state, k_sq, use_quantum, use_hydro
                 )
 
             # Kick (half-step) - quantum + gravity
