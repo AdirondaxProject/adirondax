@@ -1,7 +1,6 @@
 import jax.numpy as jnp
 from .common2d import (
     get_curl,
-    get_div,
     get_avg,
     get_gradient,
     slope_limit,
@@ -108,7 +107,7 @@ def get_flux(
         - 0.5 * (Bx_star**2 + By_star**2)
     ) + 0.5 * (Bx_star**2 + By_star**2)
 
-    # compute fluxes (local Lax-Friedrichs/Rusanov)
+    # compute fluxes
     flux_Mass = momx_star
     flux_Momx = momx_star**2 / rho_star + P_star - Bx_star * Bx_star
     flux_Momy = momx_star * momy_star / rho_star - Bx_star * By_star
@@ -133,11 +132,11 @@ def get_flux(
     C = jnp.maximum(C_L, C_R)
 
     # add stabilizing diffusive term
-    flux_Mass -= C * 0.5 * (rho_L - rho_R)
-    flux_Momx -= C * 0.5 * (rho_L * vx_L - rho_R * vx_R)
-    flux_Momy -= C * 0.5 * (rho_L * vy_L - rho_R * vy_R)
-    flux_Energy -= C * 0.5 * (en_L - en_R)
-    flux_By -= C * 0.5 * (By_L - By_R)
+    flux_Mass -= C * 0.5 * (rho_R - rho_L)
+    flux_Momx -= C * 0.5 * (rho_R * vx_R - rho_L * vx_L)
+    flux_Momy -= C * 0.5 * (rho_R * vy_R - rho_L * vy_L)
+    flux_Energy -= C * 0.5 * (en_R - en_L)
+    flux_By -= C * 0.5 * (By_R - By_L)
 
     return flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By
 
@@ -207,35 +206,35 @@ def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt):
     Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolate_to_face(Bx_prime, Bx_dx, Bx_dy, dx)
     By_XL, By_XR, By_YL, By_YR = extrapolate_to_face(By_prime, By_dx, By_dy, dx)
 
-    # compute fluxes (local Lax-Friedrichs/Rusanov)
+    # compute fluxes
     flux_Mass_X, flux_Momx_X, flux_Momy_X, flux_Energy_X, flux_By_X = get_flux(
-        rho_XL,
         rho_XR,
-        vx_XL,
+        rho_XL,
         vx_XR,
-        vy_XL,
+        vx_XL,
         vy_XR,
-        P_XL,
+        vy_XL,
         P_XR,
-        Bx_XL,
+        P_XL,
         Bx_XR,
-        By_XL,
+        Bx_XL,
         By_XR,
+        By_XL,
         gamma,
     )
     flux_Mass_Y, flux_Momy_Y, flux_Momx_Y, flux_Energy_Y, flux_Bx_Y = get_flux(
-        rho_YL,
         rho_YR,
-        vy_YL,
+        rho_YL,
         vy_YR,
-        vx_YL,
+        vy_YL,
         vx_YR,
-        P_YL,
+        vx_YL,
         P_YR,
-        By_YL,
+        P_YL,
         By_YR,
-        Bx_YL,
+        By_YL,
         Bx_YR,
+        Bx_YL,
         gamma,
     )
 
