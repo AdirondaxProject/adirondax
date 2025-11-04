@@ -1,4 +1,3 @@
-import jax
 import jax.numpy as jnp
 
 # TODO: REMOVE THE FOLLOWING LINES
@@ -86,7 +85,7 @@ def main():
     # Evolve the system
     t0 = time.time()
     sim.run()
-    print("Solve time (s): ", time.time() - t0)
+    print("Run time (s): ", time.time() - t0)
 
     make_plot(sim)
 

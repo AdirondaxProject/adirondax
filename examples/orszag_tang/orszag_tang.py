@@ -56,7 +56,7 @@ def set_up_simulation():
     sim = adx.Simulation(params)
 
     # Set initial conditions
-    sim.state["t"] = 0.0
+    sim.state["t"] = jnp.array(0.0)
     X, Y = sim.mesh
     sim.state["rho"] = (gamma**2 / (4.0 * jnp.pi)) * jnp.ones(X.shape)
     sim.state["vx"] = -jnp.sin(2.0 * jnp.pi * Y)
@@ -94,7 +94,7 @@ def main():
     # Evolve the system
     t0 = time.time()
     sim.run()
-    print("Solve time (s): ", time.time() - t0)
+    print("Run time (s): ", time.time() - t0)
 
     make_plot(sim)
 
