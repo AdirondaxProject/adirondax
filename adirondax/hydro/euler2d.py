@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from .common2d import get_gradient, extrapolate_to_face, apply_fluxes
+from adirondax.hydro.common2d import get_gradient, extrapolate_to_face, apply_fluxes
 
 # Pure functions for 2D Euler hydrodynamics
 

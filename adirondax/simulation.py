@@ -2,11 +2,11 @@ import jax
 import jax.numpy as jnp
 import copy
 
-from .constants import constants
-from .hydro.euler2d import hydro_euler2d_fluxes
-from .hydro.mhd2d import hydro_mhd2d_fluxes
-from .quantum import quantum_kick, quantum_drift
-from .gravity import calculate_gravitational_potential
+from adirondax.constants import constants
+from adirondax.hydro.euler2d import hydro_euler2d_fluxes
+from adirondax.hydro.mhd2d import hydro_mhd2d_fluxes
+from adirondax.quantum import quantum_kick, quantum_drift
+from adirondax.gravity import calculate_gravitational_potential
 
 
 class Simulation:
