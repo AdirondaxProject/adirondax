@@ -1,0 +1,100 @@
+{
+  "physics": {
+    "hydro": { 
+      "default": true,
+      "description": "switch on for hydrodynamics."
+    },
+    "magnetic": { 
+      "default": false,
+      "description": "switch on for magnetic field."
+    },
+    "gravity": { 
+      "default": false,
+      "description": "switch on for self-gravity."
+    },
+    "external_potential": { 
+      "default": false,
+      "description": "switch on for external gravitational potential."
+    },
+    "quantum": { 
+      "default": false,
+      "description": "switch on for Schrodinger field."
+    }
+  },
+  "mesh": {
+    "type": {
+      "default": "eulerian",
+      "description": "options: 'eulerian', 'lagrangian', 'ale'."
+    },
+    "geometry": {
+      "default": "cartesian",
+      "description": "options: 'cartesian', 'axisymmetric'."
+    },
+    "box_size": { 
+      "default": [1.0, 1.0],
+      "description": "domain box size."
+    },
+    "resolution": { 
+      "default": [32, 32],
+      "description": "resolution for each dimension."
+    }
+  },
+  "time": {
+    "start": { 
+      "default": 0.0,
+      "description": "simulation start time."
+    },
+    "end": { 
+      "default": 1.0,
+      "description": "simulation end time."
+    }
+  },
+  "output": {
+    "path": {
+      "default": "./checkpoints",
+      "description": "path to output directory."
+    },
+    "num_checkpoints": {
+      "default": 100,
+      "description": "number of checkpoints to save."
+    },
+    "save": {
+      "default": true,
+      "description": "switch on to save checkpoints."
+    },
+    "plot_dynamic_range": {
+      "default": 100.0,
+      "description": "dynamic range for plotting."
+    }
+  },
+  "hydro": {
+    "eos": { 
+      "default": {"type": "ideal", "gamma": 1.66666667},
+      "description": "equations of state: {'type': 'ideal', 'gamma':}, {'type': 'isothermal', 'sound_speed':}."
+    }
+  },
+  "quantum": {
+    "m_eV": { 
+      "default": 1.0e-22,
+      "description": "axion mass in eV."
+    }
+  },
+  "cosmology": {
+    "omega_matter": {
+      "default": 0.3,
+      "description": "matter density parameter."
+    },
+    "omega_lambda": {
+      "default": 0.7,
+      "description": "dark energy density parameter."
+    },
+    "little_h": {
+      "default": 0.7,
+      "description": "Hubble parameter little h (H_0 = 100 h km/s/Mpc)."
+    }
+  },
+  "version": {
+    "default": "unknown",
+    "description": "adirondax version used (auto detected)."
+  }
+}
