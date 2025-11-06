@@ -6,7 +6,6 @@ import importlib.resources
 import json
 from importlib.metadata import version
 import jax
-import jax.numpy as jnp
 
 
 def print_parameters(params):

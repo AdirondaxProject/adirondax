@@ -1,12 +1,12 @@
 import jax
 import jax.numpy as jnp
-import copy
 
 from .constants import constants
 from .hydro.euler2d import hydro_euler2d_fluxes
 from .hydro.mhd2d import hydro_mhd2d_fluxes
 from .quantum import quantum_kick, quantum_drift
 from .gravity import calculate_gravitational_potential
+from .utils import set_up_parameters, print_parameters
 
 
 class Simulation:
@@ -20,67 +20,89 @@ class Simulation:
     """
 
     def __init__(self, params):
-        # simulation parameters
-        self._params = copy.deepcopy(params)
-        self._nt = params["simulation"]["n_timestep"]
-        self._dt = params["simulation"]["timestep"]
-        self._dim = len(params["mesh"]["resolution"])
-        self._nx = params["mesh"]["resolution"][0]
-        self._Lx = params["mesh"]["boxsize"][0]
-        self._dx = self._Lx / self._nx
-        if self._dim > 1:
-            self._ny = params["mesh"]["resolution"][1]
-            self._Ly = params["mesh"]["boxsize"][1]
-            self._dy = self._Ly / self._ny
-        if self._dim == 3:
-            self._nz = params["mesh"]["resolution"][2]
-            self._Lz = params["mesh"]["boxsize"][2]
-            self._dz = self._Lz / self._nz
+        # start from default simulation parameters and update with user params
+        self._params = set_up_parameters(params)
+
+        # additional checks
+        if len(self.resolution) != len(self.box_size):
+            raise ValueError("'resolution' and 'box_size' must have same shape")
+
+        if self.dim == 3:
+            raise NotImplementedError("3D is not yet implemented.")
+
+        # print info
+        if jax.process_index() == 0:
+            print("Simulation parameters:")
+            print_parameters(self.params)
 
         # simulation state
         self.state = {}
-        self.state["t"] = jnp.array(0.0)
-        if params["physics"]["hydro"]:
-            self.state["rho"] = jnp.zeros((self._nx, self._ny))
-            self.state["vx"] = jnp.zeros((self._nx, self._ny))
-            self.state["vy"] = jnp.zeros((self._nx, self._ny))
-            self.state["P"] = jnp.zeros((self._nx, self._ny))
-        if params["physics"]["magnetic"]:
-            self.state["bx"] = jnp.zeros((self._nx, self._ny))
-            self.state["by"] = jnp.zeros((self._nx, self._ny))
-        if params["physics"]["quantum"]:
-            self.state["psi"] = jnp.zeros((self._nx, self._ny), dtype=jnp.complex64)
+        self.state["t"] = jnp.array(0) + jnp.nan
+        if self.params["physics"]["hydro"]:
+            self.state["rho"] = jnp.zeros(self.resolution) + jnp.nan
+            self.state["vx"] = jnp.zeros(self.resolution) + jnp.nan
+            self.state["vy"] = jnp.zeros(self.resolution) + jnp.nan
+            self.state["P"] = jnp.zeros(self.resolution) + jnp.nan
+        if self.params["physics"]["magnetic"]:
+            self.state["bx"] = jnp.zeros(self.resolution) + jnp.nan
+            self.state["by"] = jnp.zeros(self.resolution) + jnp.nan
+        if self.params["physics"]["quantum"]:
+            self.state["psi"] = (
+                jnp.zeros(self.resolution, dtype=jnp.complex64) + jnp.nan
+            )
 
     @property
-    def nt(self):
-        return self._nt
+    def resolution(self):
+        """
+        Return the resolution (per dimension) of the simulation
+        """
+        return self.params["mesh"]["resolution"]
 
     @property
-    def dt(self):
-        return self._dt
+    def box_size(self):
+        """
+        Return the box size of the simulation
+        """
+        return self.params["mesh"]["box_size"]
 
     @property
     def dim(self):
-        return self._dim
+        """
+        Return the dimension of the simulation
+        """
+        return len(self.resolution)
 
     @property
     def params(self):
+        """
+        Return the parameters of the simulation
+        """
         return self._params
 
     @property
     def mesh(self):
-        dx = self._dx
-        dy = self._dy
-        xlin = jnp.linspace(0.5 * dx, self._Lx - 0.5 * dx, self._nx)
-        ylin = jnp.linspace(0.5 * dy, self._Ly - 0.5 * dy, self._ny)
+        """
+        Return the simulation mesh
+        """
+        Lx = self.box_size[0]
+        Ly = self.box_size[1]
+        nx = self.resolution[0]
+        ny = self.resolution[1]
+        dx = Lx / nx
+        dy = Ly / ny
+        xlin = jnp.linspace(0.5 * dx, Lx - 0.5 * dx, nx)
+        ylin = jnp.linspace(0.5 * dy, Ly - 0.5 * dy, ny)
         X, Y = jnp.meshgrid(xlin, ylin, indexing="ij")
         return X, Y
 
     @property
     def kgrid(self):
-        n = self._nx
-        L = self._Lx
-        klin = 2.0 * jnp.pi / L * jnp.arange(-n / 2, n / 2)
+        """
+        Return the simulation spectral grid
+        """
+        Lx = self.box_size[0]
+        nx = self.resolution[0]
+        klin = (2.0 * jnp.pi / Lx) * jnp.arange(-nx / 2, nx / 2)
         kx, ky = jnp.meshgrid(klin, klin)
         kx = jnp.fft.ifftshift(kx)
         ky = jnp.fft.ifftshift(ky)
@@ -99,6 +121,9 @@ class Simulation:
 
     @property
     def potential(self):
+        """
+        Return the gravitational potential
+        """
         kx, ky = self.kgrid
         k_sq = kx**2 + ky**2
         return self._calc_grav_potential(
@@ -124,9 +149,17 @@ class Simulation:
         """
 
         # Simulation parameters
-        dt = self._dt
-        nt = self._nt
-        dx = self._dx
+        Lx = self.box_size[0]
+        nx = self.resolution[0]
+        dx = Lx / nx
+        nt = self.params["time"]["num_timesteps"]
+        t_span = self.params["time"]["span"]
+
+        fixed_timestepping = True if nt > 0 else False
+        if fixed_timestepping:
+            dt = t_span / nt
+
+        assert fixed_timestepping  # XXX for now
 
         # Physics flags
         use_hydro = self.params["physics"]["hydro"]
@@ -134,7 +167,7 @@ class Simulation:
         use_quantum = self.params["physics"]["quantum"]
         use_gravity = self.params["physics"]["gravity"]
 
-        gamma = self.params["hydro"]["eos"]["gamma"] if use_hydro else None
+        gamma = self.params["hydro"]["eos"]["gamma"]
 
         # Precompute Fourier space variables
         k_sq = None

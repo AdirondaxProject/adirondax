@@ -25,24 +25,20 @@ def set_up_simulation():
     n = 128
     nt = 100 * int(n / 128)
     t_stop = 0.03
-    dt = t_stop / nt
 
     params = {
         "physics": {
-            "hydro": False,
-            "magnetic": False,
             "quantum": True,
             "gravity": True,
         },
         "mesh": {
             "type": "cartesian",
             "resolution": [n, n],
-            "boxsize": [1.0, 1.0],
+            "box_size": [1.0, 1.0],
         },
-        "simulation": {
-            "stop_time": t_stop,
-            "timestep": dt,
-            "n_timestep": nt,
+        "time": {
+            "span": t_stop,
+            "num_timesteps": nt,
         },
     }
 
@@ -59,8 +55,8 @@ def solve_inverse_problem(sim):
     rho_target = 1.0 - 0.5 * (rho_target - 0.5)
     rho_target /= jnp.mean(rho_target)
 
-    assert rho_target.shape[0] == sim.params["mesh"]["resolution"][0]
-    assert rho_target.shape[1] == sim.params["mesh"]["resolution"][1]
+    assert rho_target.shape[0] == sim.resolution[0]
+    assert rho_target.shape[1] == sim.resolution[1]
 
     # Define the loss function for the optimization
     @jax.jit

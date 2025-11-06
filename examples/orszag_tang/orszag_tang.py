@@ -25,7 +25,6 @@ def set_up_simulation():
     n = 512
     nt = 100 * int(n / 32)
     t_stop = 0.5
-    dt = t_stop / nt
     gamma = 5.0 / 3.0
     box_size = 1.0
     dx = box_size / n
@@ -34,18 +33,15 @@ def set_up_simulation():
         "physics": {
             "hydro": True,
             "magnetic": True,
-            "quantum": False,
-            "gravity": False,
         },
         "mesh": {
             "type": "cartesian",
             "resolution": [n, n],
-            "boxsize": [box_size, box_size],
+            "box_size": [box_size, box_size],
         },
-        "simulation": {
-            "stop_time": t_stop,
-            "timestep": dt,
-            "n_timestep": nt,
+        "time": {
+            "span": t_stop,
+            "num_timesteps": nt,
         },
         "hydro": {
             "eos": {"type": "ideal", "gamma": gamma},

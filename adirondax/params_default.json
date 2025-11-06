@@ -1,7 +1,7 @@
 {
   "physics": {
     "hydro": { 
-      "default": true,
+      "default": false,
       "description": "switch on for hydrodynamics."
     },
     "magnetic": { 
@@ -32,7 +32,7 @@
     },
     "box_size": { 
       "default": [1.0, 1.0],
-      "description": "domain box size."
+      "description": "domain box size: (x,y), (x,y,z), (r,z)."
     },
     "resolution": { 
       "default": [32, 32],
@@ -40,13 +40,13 @@
     }
   },
   "time": {
-    "start": { 
+    "span": { 
       "default": 0.0,
-      "description": "simulation start time."
+      "description": "simulation span time."
     },
-    "end": { 
-      "default": 1.0,
-      "description": "simulation end time."
+    "num_timesteps": { 
+      "default": -1,
+      "description": "set to a positive value to fix the number of (equi-spaced) timesteps."
     }
   },
   "output": {
@@ -69,8 +69,22 @@
   },
   "hydro": {
     "eos": { 
-      "default": {"type": "ideal", "gamma": 1.66666667},
-      "description": "equations of state: {'type': 'ideal', 'gamma':}, {'type': 'isothermal', 'sound_speed':}."
+      "type": {
+        "default": "ideal",
+        "description": "options: ideal, isothermal, tabular."
+      },
+      "gamma": {
+        "default": 1.66666667,
+        "description": "adiabatic index for 'ideal' gas."
+      },
+      "sound_speed": {
+        "default": 1.0,
+        "description": "isothermal sound speed for 'isothermal' gas."
+      },
+      "table_path": {
+        "default": "./eos_table.h5",
+        "description": "path to tabular EOS data file for 'tabular' gas."
+      }
     }
   },
   "quantum": {

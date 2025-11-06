@@ -21,24 +21,19 @@ def set_up_simulation():
     n = 256
     nt = 1500 * int(n / 128)
     t_stop = 2.0
-    dt = t_stop / nt
 
     params = {
         "physics": {
             "hydro": True,
-            "magnetic": False,
-            "quantum": False,
-            "gravity": False,
         },
         "mesh": {
             "type": "cartesian",
             "resolution": [n, n],
-            "boxsize": [1.0, 1.0],
+            "box_size": [1.0, 1.0],
         },
-        "simulation": {
-            "stop_time": t_stop,
-            "timestep": dt,
-            "n_timestep": nt,
+        "time": {
+            "span": t_stop,
+            "num_timesteps": nt,
         },
         "hydro": {
             "eos": {"type": "ideal", "gamma": 5.0 / 3.0},
