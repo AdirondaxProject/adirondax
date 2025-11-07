@@ -185,8 +185,7 @@ def get_flux_hlld(
     )
 
     # Step 2
-    #  Compute left & right wave speeds according to Miyoshi & Kusano, eqn. (67)
-    #
+    # Compute left & right wave speeds according to Miyoshi & Kusano, eqn. (67)
 
     pbl = 0.5 * (Bxi**2 + By_L**2)
     pbr = 0.5 * (Bxi**2 + By_R**2)
@@ -205,7 +204,6 @@ def get_flux_hlld(
 
     # Step 3
     # Compute L/R fluxes
-    #
 
     # total pressure
     ptl = P_L + pbl
@@ -223,14 +221,12 @@ def get_flux_hlld(
     FR_By = By_R * vx_R - Bxi * vy_R
 
     # Step 4
-    #  Return upwind flux if flow is supersonic
-    #
+    # Return upwind flux if flow is supersonic
 
     # deferred to the end
 
     # Step 5
-    #  Compute middle and Alfven wave speeds
-    #
+    # Compute middle and Alfven wave speeds
 
     sdl = spd1 - vx_L
     sdr = spd5 - vx_R
@@ -254,7 +250,6 @@ def get_flux_hlld(
 
     # Step 6
     # Compute intermediate states
-    #
 
     ptst = ptl + rho_L * sdl * (sdl - sdml)
 
@@ -273,7 +268,7 @@ def get_flux_hlld(
     ULst_By = (By_L) * isDegen + (By_L * tmp) * (~isDegen)
 
     vbstl = (ULst_Mx * Bxi + ULst_My * ULst_By) / ULst_d
-    # eqn (48) of M&K#
+    # eqn (48) of M&K
     ULst_E = (
         sdl * E_L - ptl * vx_L + ptst * spd3 + Bxi * (vx_L * Bxi + vy_L * By_L - vbstl)
     ) / sdml
@@ -302,8 +297,8 @@ def get_flux_hlld(
 
     WRst_vy = URst_My / URst_d
 
-    # Ul**  and Ur**  - if Bx is zero, same as  * -states
-    #   if(Bxi == 0.0)
+    # Ul** and Ur**  - if Bx is zero, same as *-states
+    # if(Bxi == 0.0)
     isDegen = 0.5 * Bxsq / jnp.minimum(pbl, pbr) < (epsilon) ** 2
     ULdst_d = ULst_d * isDegen
     ULdst_Mx = ULst_Mx * isDegen
@@ -349,8 +344,7 @@ def get_flux_hlld(
     URdst_E = URdst_E + (URst_E + sqrtdr * Bxsig * (vbstr - tmp)) * (~isDegen)
 
     # Step 7
-    #  Compute flux
-    #
+    # Compute flux
 
     flux_Mass = FL_d * (spd1 >= 0)
     flux_Momx = FL_Mx * (spd1 >= 0)
@@ -365,7 +359,7 @@ def get_flux_hlld(
     flux_By += FR_By * (spd5 <= 0)
 
     # if(spd2 >= 0)
-    # return Fl * #
+    # return Fl*
     flux_Mass += (FL_d + spd1 * (ULst_d - rho_L)) * ((spd1 < 0) & (spd2 >= 0))
     flux_Momx += (FL_Mx + spd1 * (ULst_Mx - Mx_L)) * ((spd1 < 0) & (spd2 >= 0))
     flux_Momy += (FL_My + spd1 * (ULst_My - My_L)) * ((spd1 < 0) & (spd2 >= 0))
@@ -373,7 +367,7 @@ def get_flux_hlld(
     flux_By += (FL_By + spd1 * (ULst_By - By_L)) * ((spd1 < 0) & (spd2 >= 0))
 
     # elseif(spd3 >= 0)
-    # return Fl *  *
+    # return Fl**
     tmp = spd2 - spd1
     flux_Mass += (FL_d - spd1 * rho_L - tmp * ULst_d + spd2 * ULdst_d) * (
         (spd2 < 0) & (spd3 >= 0)
@@ -392,7 +386,7 @@ def get_flux_hlld(
     )
 
     # elseif(spd4 > 0)
-    # return Fr *  *
+    # return Fr**
     tmp = spd4 - spd5
     flux_Mass += (FR_d - spd5 * rho_R - tmp * URst_d + spd4 * URdst_d) * (
         (spd3 < 0) & (spd4 > 0)
@@ -411,7 +405,7 @@ def get_flux_hlld(
     )
 
     # else
-    # return Fr *
+    # return Fr*
     flux_Mass += (FR_d + spd5 * (URst_d - rho_R)) * ((spd4 <= 0) & (spd5 > 0))
     flux_Momx += (FR_Mx + spd5 * (URst_Mx - Mx_R)) * ((spd4 <= 0) & (spd5 > 0))
     flux_Momy += (FR_My + spd5 * (URst_My - My_R)) * ((spd4 <= 0) & (spd5 > 0))
