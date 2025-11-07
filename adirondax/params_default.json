@@ -85,6 +85,14 @@
         "default": "./eos_table.h5",
         "description": "path to tabular EOS data file for 'tabular' gas."
       }
+    },
+    "riemann_solver": {
+      "default": "llf",
+      "description": "options: 'llf', 'hlld'."
+    },
+    "cfl": {
+      "default": 0.5,
+      "description": "CFL number for hydrodynamics timestep."
     }
   },
   "quantum": {

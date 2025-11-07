@@ -421,15 +421,25 @@ def get_flux_hlld(
     return flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By
 
 
+def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx):
+    """Calculate the simulation timestep based on CFL condition"""
+
+    # get time step (CFL) = dx / max signal speed
+    Bx, By = get_avg(bx, by)
+    dt = jnp.min(
+        dx
+        / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2 + (Bx**2 + By**2) / rho))
+    )
+
+    return dt
+
+
 def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt):
     """Take a simulation timestep"""
 
     # get Conserved variables
     Bx, By = get_avg(bx, by)
     Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, Bx, By, gamma, dx**2)
-
-    # get time step (CFL) = dx / max signal speed
-    # dt = courant_fac * jnp.min(dx / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2)))
 
     # calculate gradients
     rho_dx, rho_dy = get_gradient(rho, dx)

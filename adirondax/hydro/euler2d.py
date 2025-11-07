@@ -61,14 +61,20 @@ def get_flux(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, gamma):
     return flux_Mass, flux_Momx, flux_Momy, flux_Energy
 
 
+def hydro_euler2d_timestep(rho, vx, vy, P, gamma, dx):
+    """Calculate the simulation timestep based on CFL condition"""
+
+    # get time step (CFL) = dx / max signal speed
+    dt = jnp.min(dx / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2)))
+
+    return dt
+
+
 def hydro_euler2d_fluxes(rho, vx, vy, P, gamma, dx, dt):
     """Take a simulation timestep"""
 
     # get Conserved variables
     Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, gamma, dx**2)
-
-    # get time step (CFL) = dx / max signal speed
-    # dt = courant_fac * jnp.min(dx / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2)))
 
     # calculate gradients
     rho_dx, rho_dy = get_gradient(rho, dx)

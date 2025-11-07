@@ -2,9 +2,9 @@ import jax
 import jax.numpy as jnp
 
 from .constants import constants
-from .hydro.euler2d import hydro_euler2d_fluxes
-from .hydro.mhd2d import hydro_mhd2d_fluxes
-from .quantum import quantum_kick, quantum_drift
+from .hydro.euler2d import hydro_euler2d_fluxes, hydro_euler2d_timestep
+from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
+from .quantum import quantum_kick, quantum_drift, quantum_timestep
 from .gravity import calculate_gravitational_potential
 from .utils import set_up_parameters, print_parameters
 
@@ -37,7 +37,7 @@ class Simulation:
 
         # simulation state
         self.state = {}
-        self.state["t"] = jnp.array(0) + jnp.nan
+        self.state["t"] = jnp.array(0.0) + jnp.nan
         if self.params["physics"]["hydro"]:
             self.state["rho"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["vx"] = jnp.zeros(self.resolution) + jnp.nan
@@ -50,6 +50,9 @@ class Simulation:
             self.state["psi"] = (
                 jnp.zeros(self.resolution, dtype=jnp.complex64) + jnp.nan
             )
+
+        # extra info to keep track of
+        self.state["steps_taken"] = jnp.array(0) + jnp.nan
 
     @property
     def resolution(self):
@@ -71,6 +74,13 @@ class Simulation:
         Return the dimension of the simulation
         """
         return len(self.resolution)
+
+    @property
+    def steps_taken(self):
+        """
+        Return the number of steps taken in the simulation
+        """
+        return self.state["steps_taken"]
 
     @property
     def params(self):
@@ -155,11 +165,8 @@ class Simulation:
         nt = self.params["time"]["num_timesteps"]
         t_span = self.params["time"]["span"]
 
-        fixed_timestepping = True if nt > 0 else False
-        if fixed_timestepping:
-            dt = t_span / nt
-
-        assert fixed_timestepping  # XXX for now
+        use_adaptive_timesteps = True if nt < 1 else False
+        dt = 0.0 if use_adaptive_timesteps else t_span / nt
 
         # Physics flags
         use_hydro = self.params["physics"]["hydro"]
@@ -168,6 +175,9 @@ class Simulation:
         use_gravity = self.params["physics"]["gravity"]
 
         gamma = self.params["hydro"]["eos"]["gamma"]
+        cfl = self.params["hydro"]["cfl"]
+
+        m_per_hbar = 1.0  # XXX
 
         # Precompute Fourier space variables
         k_sq = None
@@ -180,27 +190,56 @@ class Simulation:
         if use_gravity:
             V = self._calc_grav_potential(state, k_sq, use_quantum, use_hydro)
 
-        # Build the carry: (state, V, k_sq)
-        carry = (state, V, k_sq)
+        # Build the carry:
+        carry = (state, dt, V, k_sq)
 
-        def step_fn(carry, _):
+        def step_fn(carry):
             """
             Pure step function: advances state by one timestep.
-            Returns new carry and None (no stacked outputs).
             """
-            state, V, k_sq = carry
+            state, dt, V, k_sq = carry
 
             # Create new state dict to avoid mutation
             new_state = {}
 
+            # Get the timestep
+            if use_adaptive_timesteps:
+                dt = jnp.inf
+                if use_hydro:
+                    if use_magnetic:
+                        dt_hydro = hydro_mhd2d_timestep(
+                            state["rho"],
+                            state["vx"],
+                            state["vy"],
+                            state["P"],
+                            state["bx"],
+                            state["by"],
+                            gamma,
+                            dx,
+                        )
+                    else:
+                        dt_hydro = hydro_euler2d_timestep(
+                            state["rho"],
+                            state["vx"],
+                            state["vy"],
+                            state["P"],
+                            gamma,
+                            dx,
+                        )
+                    dt = jnp.minimum(dt, cfl * dt_hydro)
+                if use_quantum:
+                    dt_quantum = quantum_timestep(m_per_hbar, dx)
+                    dt = jnp.minimum(dt, dt_quantum)
+                dt = jnp.minimum(dt, t_span - state["t"])
+
             # Kick (half-step) - quantum + gravity
             psi = state.get("psi")
             if use_quantum and use_gravity and psi is not None:
-                psi = quantum_kick(psi, V, 1.0, dt / 2.0)
+                psi = quantum_kick(psi, V, m_per_hbar, dt / 2.0)
 
             # Drift (full-step) - quantum
             if use_quantum and psi is not None:
-                psi = quantum_drift(psi, k_sq, 1.0, dt)
+                psi = quantum_drift(psi, k_sq, m_per_hbar, dt)
 
             if use_quantum:
                 new_state["psi"] = psi
@@ -254,15 +293,39 @@ class Simulation:
             # Update time
             new_state["t"] = state["t"] + dt
 
-            return (new_state, new_V, k_sq), None
+            # Update diagnostics
+            new_state["steps_taken"] = state["steps_taken"] + 1
+
+            return (new_state, dt, new_V, k_sq)
 
         # Run the entire loop as a single JIT-compiled function
         def run_loop(carry):
-            final_carry, _ = jax.lax.scan(step_fn, carry, xs=None, length=nt)
+            if use_adaptive_timesteps:
+                # def cond_fn(carry):
+                #    state, _, _, _ = carry
+                #    return state["t"] < t_span * (1.0 - 1e-10)
+
+                # final_carry = jax.lax.while_loop(cond_fn, step_fn, carry)
+
+                # do a simple while loop
+                state, _, _, _ = carry
+                while state["t"] < t_span * (1.0 - 1e-10):
+                    carry = step_fn(carry)
+                    state, _, _, _ = carry
+                final_carry = carry
+            else:
+
+                def step_fn_stacked(carry, _):
+                    # Returns new carry and None (no stacked outputs) for jax.lax.scan()
+                    return step_fn(carry), None
+
+                final_carry, _ = jax.lax.scan(
+                    step_fn_stacked, carry, xs=None, length=nt
+                )
             return final_carry
 
         # Execute the compiled loop
-        state, _, _ = run_loop(carry)
+        state, _, _, _ = run_loop(carry)
 
         return state
 
@@ -270,5 +333,7 @@ class Simulation:
         """
         Run the simulation
         """
+        self.state["steps_taken"] = 0
         self.state = self._evolve(self.state)
         jax.block_until_ready(self.state)
+        # assert jnp.isfinite(self.state["t"]), "state['t'] is NaN/infinity"

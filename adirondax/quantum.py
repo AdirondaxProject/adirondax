@@ -13,3 +13,7 @@ def quantum_drift(psi, k_sq, m_per_hbar, dt):
     psi_hat = jnp.exp(dt * (-1.0j * k_sq / m_per_hbar / 2.0)) * psi_hat
     psi = jnp.fft.ifftn(psi_hat)
     return psi
+
+
+def quantum_timestep(m_per_hbar, dx):
+    return (m_per_hbar / 6.0) * (dx * dx)

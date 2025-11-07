@@ -23,7 +23,6 @@ Philip Mocz (2025)
 def set_up_simulation():
     # Define the parameters for the simulation
     n = 512
-    nt = 100 * int(n / 32)
     t_stop = 0.5
     gamma = 5.0 / 3.0
     box_size = 1.0
@@ -41,10 +40,10 @@ def set_up_simulation():
         },
         "time": {
             "span": t_stop,
-            "num_timesteps": nt,
         },
         "hydro": {
             "eos": {"type": "ideal", "gamma": gamma},
+            "cfl": 0.6,
         },
     }
 
@@ -90,7 +89,8 @@ def main():
     # Evolve the system
     t0 = time.time()
     sim.run()
-    print("Run time (s): ", time.time() - t0)
+    print("Steps taken:", sim.steps_taken)
+    print("Run time (s):", time.time() - t0)
 
     make_plot(sim)
 
