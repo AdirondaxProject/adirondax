@@ -44,6 +44,7 @@ def set_up_simulation():
         "hydro": {
             "eos": {"type": "ideal", "gamma": gamma},
             "cfl": 0.6,
+            "riemann_solver": "hlld",
         },
     }
 

@@ -10,7 +10,7 @@ Usage:
 python orszag_tang.py
 ```
 
-Takes around XXXXXXXX seconds to run on my macbook (cpu).
+Takes around 55 seconds ('llf') / 105 seconds ('hlld') to run on my macbook (cpu).
 
 ## Simulation snapshots
 

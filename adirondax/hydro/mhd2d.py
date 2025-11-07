@@ -421,6 +421,57 @@ def get_flux_hlld(
     return flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_By
 
 
+def get_flux(
+    rho_L,
+    rho_R,
+    vx_L,
+    vx_R,
+    vy_L,
+    vy_R,
+    P_L,
+    P_R,
+    Bx_L,
+    Bx_R,
+    By_L,
+    By_R,
+    gamma,
+    riemann_solver_type,
+):
+    if riemann_solver_type == "hlld":
+        return get_flux_hlld(
+            rho_L,
+            rho_R,
+            vx_L,
+            vx_R,
+            vy_L,
+            vy_R,
+            P_L,
+            P_R,
+            Bx_L,
+            Bx_R,
+            By_L,
+            By_R,
+            gamma,
+        )
+    else:
+        # default
+        return get_flux_llf(
+            rho_L,
+            rho_R,
+            vx_L,
+            vx_R,
+            vy_L,
+            vy_R,
+            P_L,
+            P_R,
+            Bx_L,
+            Bx_R,
+            By_L,
+            By_R,
+            gamma,
+        )
+
+
 def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx):
     """Calculate the simulation timestep based on CFL condition"""
 
@@ -434,7 +485,7 @@ def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx):
     return dt
 
 
-def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt):
+def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt, riemann_solver_type):
     """Take a simulation timestep"""
 
     # get Conserved variables
@@ -497,7 +548,7 @@ def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt):
     By_XL, By_XR, By_YL, By_YR = extrapolate_to_face(By_prime, By_dx, By_dy, dx)
 
     # compute fluxes
-    flux_Mass_X, flux_Momx_X, flux_Momy_X, flux_Energy_X, flux_By_X = get_flux_llf(
+    flux_Mass_X, flux_Momx_X, flux_Momy_X, flux_Energy_X, flux_By_X = get_flux(
         rho_XR,
         rho_XL,
         vx_XR,
@@ -511,8 +562,9 @@ def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt):
         By_XR,
         By_XL,
         gamma,
+        riemann_solver_type,
     )
-    flux_Mass_Y, flux_Momy_Y, flux_Momx_Y, flux_Energy_Y, flux_Bx_Y = get_flux_llf(
+    flux_Mass_Y, flux_Momy_Y, flux_Momx_Y, flux_Energy_Y, flux_Bx_Y = get_flux(
         rho_YR,
         rho_YL,
         vy_YR,
@@ -526,6 +578,7 @@ def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt):
         Bx_YR,
         Bx_YL,
         gamma,
+        riemann_solver_type,
     )
 
     # update solution

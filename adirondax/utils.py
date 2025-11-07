@@ -4,7 +4,7 @@ import importlib.util
 from pathlib import Path
 import importlib.resources
 import json
-from importlib.metadata import version
+from importlib.metadata import version, PackageNotFoundError
 import jax
 
 
@@ -30,7 +30,7 @@ def print_distributed_info():
 
 def set_up_parameters(user_overwrites):
     # first load the default params
-    params_path = importlib.resources.files("adirondax") / "params_default.json"
+    params_path = importlib.resources.files("adirondax") / "defaults.json"
     with params_path.open("r", encoding="utf-8") as f:
         params = json.load(f)
 
@@ -41,7 +41,10 @@ def set_up_parameters(user_overwrites):
     params = _update_dicts(params, user_overwrites)
 
     # detect adirondax version
-    params["version"] = version("adirondax")
+    try:
+        params["version"] = version("adirondax")
+    except PackageNotFoundError:
+        params["version"] = "unknown"
 
     return params
 

@@ -23,12 +23,21 @@ class Simulation:
         # start from default simulation parameters and update with user params
         self._params = set_up_parameters(params)
 
-        # additional checks
+        # additional checks (TODO: move these into seperate function(s))
         if len(self.resolution) != len(self.box_size):
             raise ValueError("'resolution' and 'box_size' must have same shape")
 
         if self.dim == 3:
             raise NotImplementedError("3D is not yet implemented.")
+
+        if self.params["hydro"]["riemann_solver"] not in ["llf", "hlld"]:
+            raise ValueError("riemann solver does not exist")
+
+        if (
+            self.params["hydro"]["riemann_solver"] == "hlld"
+            and not self.params["physics"]["magnetic"]
+        ):
+            raise ValueError("'hlld' riemann solver only exists for magnetic=True")
 
         # print info
         if jax.process_index() == 0:
@@ -176,6 +185,7 @@ class Simulation:
 
         gamma = self.params["hydro"]["eos"]["gamma"]
         cfl = self.params["hydro"]["cfl"]
+        riemann_solver_type = self.params["hydro"]["riemann_solver"]
 
         m_per_hbar = 1.0  # XXX
 
@@ -257,6 +267,7 @@ class Simulation:
                         gamma,
                         dx,
                         dt,
+                        riemann_solver_type,
                     )
                     new_state["rho"] = rho
                     new_state["vx"] = vx
