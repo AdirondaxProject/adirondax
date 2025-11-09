@@ -49,7 +49,7 @@ def slope_limit(f, dx, f_dx, f_dy):
     """
     Apply slope limiter to slopes
     """
-    f_new_dx = (
+    f_dx_new = (
         f_dx
         * jnp.maximum(
             0.0,
@@ -65,7 +65,7 @@ def slope_limit(f, dx, f_dx, f_dy):
             ),
         )
     )
-    f_new_dy = (
+    f_dy_new = (
         f_dy
         * jnp.maximum(
             0.0,
@@ -82,7 +82,7 @@ def slope_limit(f, dx, f_dx, f_dy):
         )
     )
 
-    return f_new_dx, f_new_dy
+    return f_dx_new, f_dy_new
 
 
 def extrapolate_to_face(f, f_dx, f_dy, dx):
