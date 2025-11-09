@@ -49,47 +49,40 @@ def slope_limit(f, dx, f_dx, f_dy):
     """
     Apply slope limiter to slopes
     """
-
-    f_dx = (
-        jnp.maximum(
+    f_new_dx = (
+        f_dx
+        * jnp.maximum(
             0.0,
             jnp.minimum(
                 1.0, ((f - jnp.roll(f, 1, axis=0)) / dx) / (f_dx + 1.0e-8 * (f_dx == 0))
             ),
         )
-        * f_dx
-    )
-    f_dx = (
-        jnp.maximum(
+        * jnp.maximum(
             0.0,
             jnp.minimum(
                 1.0,
                 (-(f - jnp.roll(f, -1, axis=0)) / dx) / (f_dx + 1.0e-8 * (f_dx == 0)),
             ),
         )
-        * f_dx
     )
-    f_dy = (
-        jnp.maximum(
+    f_new_dy = (
+        f_dy
+        * jnp.maximum(
             0.0,
             jnp.minimum(
                 1.0, ((f - jnp.roll(f, 1, axis=1)) / dx) / (f_dy + 1.0e-8 * (f_dy == 0))
             ),
         )
-        * f_dy
-    )
-    f_dy = (
-        jnp.maximum(
+        * jnp.maximum(
             0.0,
             jnp.minimum(
                 1.0,
                 (-(f - jnp.roll(f, -1, axis=1)) / dx) / (f_dy + 1.0e-8 * (f_dy == 0)),
             ),
         )
-        * f_dy
     )
 
-    return f_dx, f_dy
+    return f_new_dx, f_new_dy
 
 
 def extrapolate_to_face(f, f_dx, f_dy, dx):
@@ -110,9 +103,11 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dt):
     """
     Apply fluxes to conserved variables
     """
-    F += -dt * dx * flux_F_X
-    F += dt * dx * jnp.roll(flux_F_X, 1, axis=0)
-    F += -dt * dx * flux_F_Y
-    F += dt * dx * jnp.roll(flux_F_Y, 1, axis=1)
+    F_new = F + (dt * dx) * (
+        -flux_F_X
+        + jnp.roll(flux_F_X, 1, axis=0)
+        - flux_F_Y
+        + jnp.roll(flux_F_Y, 1, axis=1)
+    )
 
-    return F
+    return F_new

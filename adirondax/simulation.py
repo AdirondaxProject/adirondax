@@ -175,7 +175,7 @@ class Simulation:
         t_span = self.params["time"]["span"]
 
         use_adaptive_timesteps = True if nt < 1 else False
-        dt = 0.0 if use_adaptive_timesteps else t_span / nt
+        dt_ref = jnp.nan if use_adaptive_timesteps else t_span / nt
 
         # Physics flags
         use_hydro = self.params["physics"]["hydro"]
@@ -201,18 +201,19 @@ class Simulation:
             V = self._calc_grav_potential(state, k_sq, use_quantum, use_hydro)
 
         # Build the carry:
-        carry = (state, dt, V, k_sq)
+        carry = (state, V, k_sq)
 
         def step_fn(carry):
             """
             Pure step function: advances state by one timestep.
             """
-            state, dt, V, k_sq = carry
+            state, V, k_sq = carry
 
             # Create new state dict to avoid mutation
             new_state = {}
 
             # Get the timestep
+            dt = dt_ref
             if use_adaptive_timesteps:
                 dt = jnp.inf
                 if use_hydro:
@@ -307,22 +308,22 @@ class Simulation:
             # Update diagnostics
             new_state["steps_taken"] = state["steps_taken"] + 1
 
-            return (new_state, dt, new_V, k_sq)
+            return (new_state, new_V, k_sq)
 
         # Run the entire loop as a single JIT-compiled function
         def run_loop(carry):
             if use_adaptive_timesteps:
                 # def cond_fn(carry):
-                #    state, _, _, _ = carry
+                #    state, _, _ = carry
                 #    return state["t"] < t_span * (1.0 - 1e-10)
 
                 # final_carry = jax.lax.while_loop(cond_fn, step_fn, carry)
 
                 # do a simple while loop
-                state, _, _, _ = carry
+                state, _, _ = carry
                 while state["t"] < t_span * (1.0 - 1e-10):
                     carry = step_fn(carry)
-                    state, _, _, _ = carry
+                    state, _, _ = carry
                 final_carry = carry
             else:
 
@@ -336,7 +337,7 @@ class Simulation:
             return final_carry
 
         # Execute the compiled loop
-        state, _, _, _ = run_loop(carry)
+        state, _, _ = run_loop(carry)
 
         return state
 
@@ -347,4 +348,3 @@ class Simulation:
         self.state["steps_taken"] = 0
         self.state = self._evolve(self.state)
         jax.block_until_ready(self.state)
-        # assert jnp.isfinite(self.state["t"]), "state['t'] is NaN/infinity"
