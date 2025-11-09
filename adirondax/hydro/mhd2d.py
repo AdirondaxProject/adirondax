@@ -55,10 +55,10 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
     )
     dbx, dby = get_curl(-Ez, dx)
 
-    bx += dt * dbx
-    by += dt * dby
+    bx_new = bx + dt * dbx
+    by_new = by + dt * dby
 
-    return bx, by
+    return bx_new, by_new
 
 
 # local Lax-Friedrichs/Rusanov
