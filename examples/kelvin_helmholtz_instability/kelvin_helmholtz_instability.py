@@ -37,6 +37,7 @@ def set_up_simulation():
         },
         "hydro": {
             "eos": {"type": "ideal", "gamma": 5.0 / 3.0},
+            "slope_limiting": False,
         },
     }
 

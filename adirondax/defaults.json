@@ -93,6 +93,10 @@
     "cfl": {
       "default": 0.5,
       "description": "CFL number for hydrodynamics timestep."
+    },
+    "slope_limiting": {
+      "default": false,
+      "description": "Use slope limiting."
     }
   },
   "quantum": {

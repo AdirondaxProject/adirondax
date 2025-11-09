@@ -23,7 +23,7 @@ class Simulation:
         # start from default simulation parameters and update with user params
         self._params = set_up_parameters(params)
 
-        # additional checks (TODO: move these into seperate function(s))
+        # additional checks (TODO: move these into separate function(s))
         if len(self.resolution) != len(self.box_size):
             raise ValueError("'resolution' and 'box_size' must have same shape")
 
@@ -186,6 +186,7 @@ class Simulation:
         gamma = self.params["hydro"]["eos"]["gamma"]
         cfl = self.params["hydro"]["cfl"]
         riemann_solver_type = self.params["hydro"]["riemann_solver"]
+        use_slope_limiting = self.params["hydro"]["slope_limiting"]
 
         m_per_hbar = 1.0  # XXX
 
@@ -269,6 +270,7 @@ class Simulation:
                         dx,
                         dt,
                         riemann_solver_type,
+                        use_slope_limiting,
                     )
                     new_state["rho"] = rho
                     new_state["vx"] = vx
@@ -285,6 +287,8 @@ class Simulation:
                         gamma,
                         dx,
                         dt,
+                        riemann_solver_type,
+                        use_slope_limiting,
                     )
                     new_state["rho"] = rho
                     new_state["vx"] = vx

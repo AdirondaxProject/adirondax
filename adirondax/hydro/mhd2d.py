@@ -83,12 +83,12 @@ def get_flux_llf(
 
     # left and right energies
     en_L = (
-        (P_L - 0.5 * (Bx_L**2 + By_L**2)) / (gamma - 1)
+        (P_L - 0.5 * (Bx_L**2 + By_L**2)) / (gamma - 1.0)
         + 0.5 * rho_L * (vx_L**2 + vy_L**2)
         + 0.5 * (Bx_L**2 + By_L**2)
     )
     en_R = (
-        (P_R - 0.5 * (Bx_R**2 + By_R**2)) / (gamma - 1)
+        (P_R - 0.5 * (Bx_R**2 + By_R**2)) / (gamma - 1.0)
         + 0.5 * rho_R * (vx_R**2 + vy_R**2)
         + 0.5 * (Bx_R**2 + By_R**2)
     )
@@ -101,7 +101,7 @@ def get_flux_llf(
     Bx_star = 0.5 * (Bx_L + Bx_R)
     By_star = 0.5 * (By_L + By_R)
 
-    P_star = (gamma - 1) * (
+    P_star = (gamma - 1.0) * (
         en_star
         - 0.5 * (momx_star**2 + momy_star**2) / rho_star
         - 0.5 * (Bx_star**2 + By_star**2)
@@ -479,7 +479,9 @@ def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx):
     return dt
 
 
-def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt, riemann_solver_type):
+def hydro_mhd2d_fluxes(
+    rho, vx, vy, P, bx, by, gamma, dx, dt, riemann_solver_type, use_slope_limiting
+):
     """Take a simulation timestep"""
 
     # get Conserved variables
@@ -495,28 +497,29 @@ def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt, riemann_solver_typ
     By_dx, By_dy = get_gradient(By, dx)
 
     # slope limit gradients
-    rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
-    vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
-    vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
-    P_dx, P_dy = slope_limit(P, dx, P_dx, P_dy)
-    Bx_dx, Bx_dy = slope_limit(Bx, dx, Bx_dx, Bx_dy)
-    By_dx, By_dy = slope_limit(By, dx, By_dx, By_dy)
+    if use_slope_limiting:
+        rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
+        vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
+        vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
+        P_dx, P_dy = slope_limit(P, dx, P_dx, P_dy)
+        Bx_dx, Bx_dy = slope_limit(Bx, dx, Bx_dx, Bx_dy)
+        By_dx, By_dy = slope_limit(By, dx, By_dx, By_dy)
 
     # extrapolate half-step in time
     rho_prime = rho - 0.5 * dt * (vx * rho_dx + rho * vx_dx + vy * rho_dy + rho * vy_dy)
     vx_prime = vx - 0.5 * dt * (
         vx * vx_dx
         + vy * vx_dy
-        + (1 / rho) * P_dx
-        - (2 * Bx / rho) * Bx_dx
+        + (1.0 / rho) * P_dx
+        - (2.0 * Bx / rho) * Bx_dx
         - (By / rho) * Bx_dy
         - (Bx / rho) * By_dy
     )
     vy_prime = vy - 0.5 * dt * (
         vx * vy_dx
         + vy * vy_dy
-        + (1 / rho) * P_dy
-        - (2 * By / rho) * By_dy
+        + (1.0 / rho) * P_dy
+        - (2.0 * By / rho) * By_dy
         - (Bx / rho) * By_dx
         - (By / rho) * Bx_dx
     )
@@ -524,11 +527,11 @@ def hydro_mhd2d_fluxes(rho, vx, vy, P, bx, by, gamma, dx, dt, riemann_solver_typ
         (gamma * (P - 0.5 * (Bx**2 + By**2)) + By**2) * vx_dx
         - Bx * By * vy_dx
         + vx * P_dx
-        + (gamma - 2) * (Bx * vx + By * vy) * Bx_dx
+        + (gamma - 2.0) * (Bx * vx + By * vy) * Bx_dx
         - By * Bx * vx_dy
         + (gamma * (P - 0.5 * (Bx**2 + By**2)) + Bx**2) * vy_dy
         + vy * P_dy
-        + (gamma - 2) * (Bx * vx + By * vy) * By_dy
+        + (gamma - 2.0) * (Bx * vx + By * vy) * By_dy
     )
     Bx_prime = Bx - 0.5 * dt * (-By * vx_dy + Bx * vy_dy + vy * Bx_dy - vx * By_dy)
     By_prime = By - 0.5 * dt * (By * vx_dx - Bx * vy_dx - vy * Bx_dx + vx * By_dx)

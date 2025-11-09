@@ -10,7 +10,8 @@ Usage:
 python kelvin_helmholtz_instability.py
 ```
 
-Takes around 6 seconds to run on my macbook (cpu).
+Takes around 7 seconds to run on my macbook (cpu).
+
 
 ## Simulation snapshots
 
