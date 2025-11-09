@@ -49,36 +49,28 @@ def slope_limit(f, dx, f_dx, f_dy):
     """
     Apply slope limiter to slopes
     """
+    denom = (f_dx + 1.0e-8 * (f_dx == 0)) * dx
     f_dx_new = (
         f_dx
         * jnp.maximum(
             0.0,
-            jnp.minimum(
-                1.0, ((f - jnp.roll(f, 1, axis=0)) / dx) / (f_dx + 1.0e-8 * (f_dx == 0))
-            ),
+            jnp.minimum(1.0, (f - jnp.roll(f, 1, axis=0)) / denom),
         )
         * jnp.maximum(
             0.0,
-            jnp.minimum(
-                1.0,
-                (-(f - jnp.roll(f, -1, axis=0)) / dx) / (f_dx + 1.0e-8 * (f_dx == 0)),
-            ),
+            jnp.minimum(1.0, -(f - jnp.roll(f, -1, axis=0)) / denom),
         )
     )
+    denom = (f_dy + 1.0e-8 * (f_dy == 0)) * dx
     f_dy_new = (
         f_dy
         * jnp.maximum(
             0.0,
-            jnp.minimum(
-                1.0, ((f - jnp.roll(f, 1, axis=1)) / dx) / (f_dy + 1.0e-8 * (f_dy == 0))
-            ),
+            jnp.minimum(1.0, (f - jnp.roll(f, 1, axis=1)) / denom),
         )
         * jnp.maximum(
             0.0,
-            jnp.minimum(
-                1.0,
-                (-(f - jnp.roll(f, -1, axis=1)) / dx) / (f_dy + 1.0e-8 * (f_dy == 0)),
-            ),
+            jnp.minimum(1.0, -(f - jnp.roll(f, -1, axis=1)) / denom),
         )
     )
 
