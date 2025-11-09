@@ -90,35 +90,36 @@ def get_flux(
         )
 
 
-def hydro_euler2d_timestep(rho, vx, vy, P, gamma, dx):
+def hydro_euler2d_timestep(rho, vx, vy, P, gamma, dx, dy):
     """Calculate the simulation timestep based on CFL condition"""
 
     # get time step (CFL) = dx / max signal speed
-    dt = jnp.min(dx / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2)))
+    dl = jnp.minimum(dx, dy)
+    dt = jnp.min(dl / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2)))
 
     return dt
 
 
 def hydro_euler2d_fluxes(
-    rho, vx, vy, P, gamma, dx, dt, riemann_solver_type, use_slope_limiting
+    rho, vx, vy, P, gamma, dx, dy, dt, riemann_solver_type, use_slope_limiting
 ):
     """Take a simulation timestep"""
 
     # get Conserved variables
-    Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, gamma, dx**2)
+    Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, gamma, dx * dy)
 
     # calculate gradients
-    rho_dx, rho_dy = get_gradient(rho, dx)
-    vx_dx, vx_dy = get_gradient(vx, dx)
-    vy_dx, vy_dy = get_gradient(vy, dx)
-    P_dx, P_dy = get_gradient(P, dx)
+    rho_dx, rho_dy = get_gradient(rho, dx, dy)
+    vx_dx, vx_dy = get_gradient(vx, dx, dy)
+    vy_dx, vy_dy = get_gradient(vy, dx, dy)
+    P_dx, P_dy = get_gradient(P, dx, dy)
 
     # slope limit gradients
     if use_slope_limiting:
-        rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
-        vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
-        vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
-        P_dx, P_dy = slope_limit(P, dx, P_dx, P_dy)
+        rho_dx, rho_dy = slope_limit(rho, rho_dx, rho_dy, dx, dy)
+        vx_dx, vx_dy = slope_limit(vx, vx_dx, vx_dy, dx, dy)
+        vy_dx, vy_dy = slope_limit(vy, vy_dx, vy_dy, dx, dy)
+        P_dx, P_dy = slope_limit(P, P_dx, P_dy, dx, dy)
 
     # extrapolate half-step in time
     rho_prime = rho - 0.5 * dt * (vx * rho_dx + rho * vx_dx + vy * rho_dy + rho * vy_dy)
@@ -127,10 +128,12 @@ def hydro_euler2d_fluxes(
     P_prime = P - 0.5 * dt * (gamma * P * (vx_dx + vy_dy) + vx * P_dx + vy * P_dy)
 
     # extrapolate in space to face centers
-    rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_to_face(rho_prime, rho_dx, rho_dy, dx)
-    vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_to_face(vx_prime, vx_dx, vx_dy, dx)
-    vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_to_face(vy_prime, vy_dx, vy_dy, dx)
-    P_XL, P_XR, P_YL, P_YR = extrapolate_to_face(P_prime, P_dx, P_dy, dx)
+    rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_to_face(
+        rho_prime, rho_dx, rho_dy, dx, dy
+    )
+    vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_to_face(vx_prime, vx_dx, vx_dy, dx, dy)
+    vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_to_face(vy_prime, vy_dx, vy_dy, dx, dy)
+    P_XL, P_XR, P_YL, P_YR = extrapolate_to_face(P_prime, P_dx, P_dy, dx, dy)
 
     # compute fluxes (local Lax-Friedrichs/Rusanov)
     flux_Mass_X, flux_Momx_X, flux_Momy_X, flux_Energy_X = get_flux(
@@ -159,11 +162,11 @@ def hydro_euler2d_fluxes(
     )
 
     # update solution
-    Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dt)
-    Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dt)
-    Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dt)
-    Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dt)
+    Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dy, dt)
+    Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dy, dt)
+    Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dy, dt)
+    Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dy, dt)
 
-    rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, gamma, dx**2)
+    rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, gamma, dx * dy)
 
     return rho, vx, vy, P

@@ -15,6 +15,7 @@ def quantum_drift(psi, k_sq, m_per_hbar, dt):
     return psi_new
 
 
-def quantum_timestep(m_per_hbar, dx):
-    dt = (m_per_hbar / 6.0) * (dx * dx)
+def quantum_timestep(m_per_hbar, dx, dy):
+    dl = jnp.minimum(dx, dy)
+    dt = (m_per_hbar / 6.0) * (dl * dl)
     return dt

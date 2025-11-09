@@ -169,8 +169,11 @@ class Simulation:
 
         # Simulation parameters
         Lx = self.box_size[0]
+        Ly = self.box_size[1]
         nx = self.resolution[0]
+        ny = self.resolution[1]
         dx = Lx / nx
+        dy = Ly / ny
         nt = self.params["time"]["num_timesteps"]
         t_span = self.params["time"]["span"]
 
@@ -228,6 +231,7 @@ class Simulation:
                             state["by"],
                             gamma,
                             dx,
+                            dy,
                         )
                     else:
                         dt_hydro = hydro_euler2d_timestep(
@@ -237,10 +241,11 @@ class Simulation:
                             state["P"],
                             gamma,
                             dx,
+                            dy,
                         )
                     dt = jnp.minimum(dt, cfl * dt_hydro)
                 if use_quantum:
-                    dt_quantum = quantum_timestep(m_per_hbar, dx)
+                    dt_quantum = quantum_timestep(m_per_hbar, dx, dy)
                     dt = jnp.minimum(dt, dt_quantum)
                 dt = jnp.minimum(dt, t_span - state["t"])
 
@@ -268,6 +273,7 @@ class Simulation:
                         state["by"],
                         gamma,
                         dx,
+                        dy,
                         dt,
                         riemann_solver_type,
                         use_slope_limiting,
@@ -286,6 +292,7 @@ class Simulation:
                         state["P"],
                         gamma,
                         dx,
+                        dy,
                         dt,
                         riemann_solver_type,
                         use_slope_limiting,

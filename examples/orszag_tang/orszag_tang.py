@@ -65,7 +65,7 @@ def set_up_simulation():
     Az = jnp.cos(4.0 * jnp.pi * Xn) / (4.0 * jnp.pi * jnp.sqrt(4.0 * jnp.pi)) + jnp.cos(
         2.0 * jnp.pi * Yn
     ) / (2.0 * jnp.pi * jnp.sqrt(4.0 * jnp.pi))
-    bx, by = get_curl(Az, dx)
+    bx, by = get_curl(Az, dx, dx)
     Bx, By = get_avg(bx, by)
     P_tot = P_gas + 0.5 * (Bx**2 + By**2)
     sim.state["P"] = P_tot

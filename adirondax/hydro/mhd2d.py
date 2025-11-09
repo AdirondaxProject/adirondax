@@ -41,7 +41,7 @@ def get_primitive(Mass, Momx, Momy, Energy, Bx, By, gamma, vol):
     return rho, vx, vy, P_tot
 
 
-def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
+def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt):
     """
     Apply fluxes to face-centered magnetic fields in a constrained transport manner
     """
@@ -53,7 +53,7 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt):
         + flux_Bx_Y
         + jnp.roll(flux_Bx_Y, -1, axis=0)
     )
-    dbx, dby = get_curl(-Ez, dx)
+    dbx, dby = get_curl(-Ez, dx, dy)
 
     bx_new = bx + dt * dbx
     by_new = by + dt * dby
@@ -466,13 +466,14 @@ def get_flux(
         )
 
 
-def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx):
+def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx, dy):
     """Calculate the simulation timestep based on CFL condition"""
 
     # get time step (CFL) = dx / max signal speed
     Bx, By = get_avg(bx, by)
+    dl = jnp.minimum(dx, dy)
     dt = jnp.min(
-        dx
+        dl
         / (jnp.sqrt(gamma * P / rho) + jnp.sqrt(vx**2 + vy**2 + (Bx**2 + By**2) / rho))
     )
 
@@ -480,30 +481,30 @@ def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx):
 
 
 def hydro_mhd2d_fluxes(
-    rho, vx, vy, P, bx, by, gamma, dx, dt, riemann_solver_type, use_slope_limiting
+    rho, vx, vy, P, bx, by, gamma, dx, dy, dt, riemann_solver_type, use_slope_limiting
 ):
     """Take a simulation timestep"""
 
     # get Conserved variables
     Bx, By = get_avg(bx, by)
-    Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, Bx, By, gamma, dx**2)
+    Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, Bx, By, gamma, dx * dy)
 
     # calculate gradients
-    rho_dx, rho_dy = get_gradient(rho, dx)
-    vx_dx, vx_dy = get_gradient(vx, dx)
-    vy_dx, vy_dy = get_gradient(vy, dx)
-    P_dx, P_dy = get_gradient(P, dx)
-    Bx_dx, Bx_dy = get_gradient(Bx, dx)
-    By_dx, By_dy = get_gradient(By, dx)
+    rho_dx, rho_dy = get_gradient(rho, dx, dy)
+    vx_dx, vx_dy = get_gradient(vx, dx, dy)
+    vy_dx, vy_dy = get_gradient(vy, dx, dy)
+    P_dx, P_dy = get_gradient(P, dx, dy)
+    Bx_dx, Bx_dy = get_gradient(Bx, dx, dy)
+    By_dx, By_dy = get_gradient(By, dx, dy)
 
     # slope limit gradients
     if use_slope_limiting:
-        rho_dx, rho_dy = slope_limit(rho, dx, rho_dx, rho_dy)
-        vx_dx, vx_dy = slope_limit(vx, dx, vx_dx, vx_dy)
-        vy_dx, vy_dy = slope_limit(vy, dx, vy_dx, vy_dy)
-        P_dx, P_dy = slope_limit(P, dx, P_dx, P_dy)
-        Bx_dx, Bx_dy = slope_limit(Bx, dx, Bx_dx, Bx_dy)
-        By_dx, By_dy = slope_limit(By, dx, By_dx, By_dy)
+        rho_dx, rho_dy = slope_limit(rho, rho_dx, rho_dy, dx, dy)
+        vx_dx, vx_dy = slope_limit(vx, vx_dx, vx_dy, dx, dy)
+        vy_dx, vy_dy = slope_limit(vy, vy_dx, vy_dy, dx, dy)
+        P_dx, P_dy = slope_limit(P, P_dx, P_dy, dx, dy)
+        Bx_dx, Bx_dy = slope_limit(Bx, Bx_dx, Bx_dy, dx, dy)
+        By_dx, By_dy = slope_limit(By, By_dx, By_dy, dx, dy)
 
     # extrapolate half-step in time
     rho_prime = rho - 0.5 * dt * (vx * rho_dx + rho * vx_dx + vy * rho_dy + rho * vy_dy)
@@ -537,12 +538,14 @@ def hydro_mhd2d_fluxes(
     By_prime = By - 0.5 * dt * (By * vx_dx - Bx * vy_dx - vy * Bx_dx + vx * By_dx)
 
     # extrapolate in space to face centers
-    rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_to_face(rho_prime, rho_dx, rho_dy, dx)
-    vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_to_face(vx_prime, vx_dx, vx_dy, dx)
-    vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_to_face(vy_prime, vy_dx, vy_dy, dx)
-    P_XL, P_XR, P_YL, P_YR = extrapolate_to_face(P_prime, P_dx, P_dy, dx)
-    Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolate_to_face(Bx_prime, Bx_dx, Bx_dy, dx)
-    By_XL, By_XR, By_YL, By_YR = extrapolate_to_face(By_prime, By_dx, By_dy, dx)
+    rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_to_face(
+        rho_prime, rho_dx, rho_dy, dx, dy
+    )
+    vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_to_face(vx_prime, vx_dx, vx_dy, dx, dy)
+    vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_to_face(vy_prime, vy_dx, vy_dy, dx, dy)
+    P_XL, P_XR, P_YL, P_YR = extrapolate_to_face(P_prime, P_dx, P_dy, dx, dy)
+    Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolate_to_face(Bx_prime, Bx_dx, Bx_dy, dx, dy)
+    By_XL, By_XR, By_YL, By_YR = extrapolate_to_face(By_prime, By_dx, By_dy, dx, dy)
 
     # compute fluxes
     flux_Mass_X, flux_Momx_X, flux_Momy_X, flux_Energy_X, flux_By_X = get_flux(
@@ -579,14 +582,14 @@ def hydro_mhd2d_fluxes(
     )
 
     # update solution
-    Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dt)
-    Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dt)
-    Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dt)
-    Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dt)
-    bx, by = constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dt)
+    Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dy, dt)
+    Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dy, dt)
+    Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dy, dt)
+    Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dy, dt)
+    bx, by = constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt)
 
     # get Primitive variables
     Bx, By = get_avg(bx, by)
-    rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, Bx, By, gamma, dx**2)
+    rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, Bx, By, gamma, dx * dy)
 
     return rho, vx, vy, P, bx, by
