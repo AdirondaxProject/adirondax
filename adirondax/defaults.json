@@ -36,7 +36,7 @@
     },
     "resolution": { 
       "default": [32, 32],
-      "description": "resolution for each dimension."
+      "description": "resolution per each dimension."
     }
   },
   "time": {
@@ -59,7 +59,7 @@
       "description": "number of checkpoints to save."
     },
     "save": {
-      "default": true,
+      "default": false,
       "description": "switch on to save checkpoints."
     },
     "plot_dynamic_range": {
@@ -96,7 +96,7 @@
     },
     "slope_limiting": {
       "default": false,
-      "description": "Use slope limiting."
+      "description": "switch on to use slope limiting."
     }
   },
   "quantum": {
