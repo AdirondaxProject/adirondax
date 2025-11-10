@@ -1,8 +1,8 @@
-jax==0.5.3
-jaxdecomp==0.2.7
+jax==0.8.0
+jaxdecomp==0.2.9
 tensorflow
-orbax-checkpoint==0.11.18
-optax==0.2.5
+orbax-checkpoint==0.11.28
+optax==0.2.6
 jaxopt
 numpy
 matplotlib
