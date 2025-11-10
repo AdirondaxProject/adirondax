@@ -10,5 +10,5 @@ if [ -z "$folder" ]; then
   exit 1
 fi
 
-magick "$folder"/dm*.png "$output"
+magick "$folder"/*.png "$output"
 echo "GIF created: $output"

@@ -102,7 +102,7 @@ def run_opt(init_params, fun, opt, max_iter, tol):
 def solve_inverse_problem(sim):
     # Load the target density field
     target_data = img.imread("target.png")[:, :, 0]
-    rho_target = jnp.flipud(jnp.array(target_data, dtype=float))
+    rho_target = jnp.flipud(jnp.array(target_data, dtype=float)).T
     rho_target = 1.0 - 0.5 * (rho_target - 0.5)
     rho_target /= jnp.mean(rho_target)
 
@@ -151,7 +151,7 @@ def make_plot(psi, theta):
     ax2 = plt.subplot(grid[0, 1])
     plt.sca(ax1)
     plt.cla()
-    plt.imshow(theta, cmap="bwr")
+    plt.imshow(theta.T, cmap="bwr")
     plt.clim(-jnp.pi, jnp.pi)
     ax1.get_xaxis().set_visible(False)
     ax1.get_yaxis().set_visible(False)
@@ -160,7 +160,7 @@ def make_plot(psi, theta):
     plt.title(r"${\rm initial\,angle}(\psi)$")
     plt.sca(ax2)
     plt.cla()
-    plt.imshow(jnp.log10(jnp.abs(psi) ** 2), cmap="inferno")
+    plt.imshow(jnp.log10(jnp.abs(psi) ** 2).T, cmap="inferno")
     plt.clim(-0.2, 0.2)
     ax2.get_xaxis().set_visible(False)
     ax2.get_yaxis().set_visible(False)

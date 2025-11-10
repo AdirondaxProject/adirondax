@@ -23,6 +23,7 @@ Philip Mocz (2025)
 def set_up_simulation():
     # Define the parameters for the simulation
     n = 512
+    nt = -1  # 2400
     t_stop = 0.5
     gamma = 5.0 / 3.0
     box_size = 1.0
@@ -40,6 +41,12 @@ def set_up_simulation():
         },
         "time": {
             "span": t_stop,
+            "num_timesteps": nt,
+        },
+        "output": {
+            "num_checkpoints": 100,
+            "save": False,
+            "plot_dynamic_range": 2.3,
         },
         "hydro": {
             "eos": {"type": "ideal", "gamma": gamma},

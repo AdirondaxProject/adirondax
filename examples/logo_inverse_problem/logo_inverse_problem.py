@@ -20,7 +20,7 @@ Philip Mocz (2024)
 """
 
 
-def set_up_simulation():
+def set_up_simulation(save=False):
     # Define the parameters for the simulation
     n = 128
     nt = 100 * int(n / 128)
@@ -40,6 +40,10 @@ def set_up_simulation():
             "span": t_stop,
             "num_timesteps": nt,
         },
+        "output": {
+            "save": save,
+            "plot_dynamic_range": 2.0,
+        },
     }
 
     # Initialize the simulation
@@ -51,7 +55,7 @@ def set_up_simulation():
 def solve_inverse_problem(sim):
     # Load the target density field
     target_data = img.imread("target.png")[:, :, 0]
-    rho_target = jnp.flipud(jnp.array(target_data, dtype=float))
+    rho_target = jnp.flipud(jnp.array(target_data, dtype=float)).T
     rho_target = 1.0 - 0.5 * (rho_target - 0.5)
     rho_target /= jnp.mean(rho_target)
 
@@ -100,7 +104,7 @@ def make_plot(psi, theta):
     ax2 = plt.subplot(grid[0, 1])
     plt.sca(ax1)
     plt.cla()
-    plt.imshow(theta, cmap="bwr")
+    plt.imshow(theta.T, cmap="bwr")
     plt.clim(-jnp.pi, jnp.pi)
     ax1.get_xaxis().set_visible(False)
     ax1.get_yaxis().set_visible(False)
@@ -109,7 +113,7 @@ def make_plot(psi, theta):
     plt.title(r"${\rm initial\,angle}(\psi)$")
     plt.sca(ax2)
     plt.cla()
-    plt.imshow(jnp.log10(jnp.abs(psi) ** 2), cmap="inferno")
+    plt.imshow(jnp.log10(jnp.abs(psi) ** 2).T, cmap="inferno")
     plt.clim(-0.2, 0.2)
     ax2.get_xaxis().set_visible(False)
     ax2.get_yaxis().set_visible(False)
@@ -122,8 +126,9 @@ def make_plot(psi, theta):
 
 
 def main():
-    sim = set_up_simulation()
+    sim = set_up_simulation(save=False)
     theta = solve_inverse_problem(sim)
+    sim = set_up_simulation(save=True)
     psi = rerun_simulation(sim, theta)
     make_plot(psi, theta)
 

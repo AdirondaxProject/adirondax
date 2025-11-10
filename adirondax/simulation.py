@@ -399,7 +399,7 @@ class Simulation:
                         plot_sim(state, checkpoint_dir, i, self.params)
                 else:
                     carry, _ = jax.lax.scan(step_fn_stacked, carry, xs=None, length=nt)
-                return carry
+            return carry
 
         # save initial state
         if jax.process_index() == 0:
