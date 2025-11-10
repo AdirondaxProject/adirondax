@@ -38,12 +38,12 @@ Author: [Philip Mocz (@pmocz)](https://github.com/pmocz/)
 
 ⚠️ Adirondax is currently being built and is not yet ready for use. Check back later ⚠️
 
-Adirondax is a scientific research software for conducting astrophysical and cosmological simulations and solving inverse problems. It is written in JAX and GPU-ready.
+Adirondax is a high-performance scientific research software for conducting astrophysical and cosmological simulations. Being differentiable, Adirondax can seamlessly integrate with pipelines for inverse-problems, inference, optimization, and coupling to ML models. Adirondax is scalable on multiple GPUs.
 
 Adirondax has a simpler companion project dedicated to Fuzzy Dark Matter simulations: [Jaxion](https://github.com/JaxionProject/jaxion)
 
 
-## Getting started
+## Install Adirondax
 
 Install with 
 
@@ -51,18 +51,34 @@ Install with
 pip install adirondax
 ```
 
+See the docs for more info on how to [build from source](https://adirondax.readthedocs.io/en/latest/pages/installation.html).
+
 
 ## Examples
 
-Check out the `examples/` directory for demonstrations of using Adirondax.
+Check out the [`examples/`](https://github.com/Adirondax/adirondax/tree/main/examples/) directory for demonstrations of using Adirondax.
 
+<p align="center">
+  <a href="https://github.com/Adirondax/adirondax/tree/main/examples/kelvin_helmholtz">
+    <img src="examples/kelvin_helmholtz/movie.gif" alt="kelvin_helmholtz" width="128"/>
+  </a>
+  <a href="https://github.com/Adirondax/adirondax/tree/main/examples/logo_inverse_problem">
+    <img src="examples/logo_inverse_problem/movie.gif" alt="logo_inverse_problem" width="128"/>
+  </a>
+  <a href="https://github.com/Adirondax/adirondax/tree/main/examples/orszag_tang">
+    <img src="examples/orszag_tang/movie.gif" alt="orszag_tang" width="128"/>
+  </a>
+  <br>
+</p>
 
 ## Links
 
 * [Code repository](https://github.com/AdirondaxProject/adirondax) on GitHub (this page).
-* [Documentation](https://adirondax.readthedocs.io) for up-to-date information about installing and running adirondax.
-* [asv benchmarks](https://adirondaxproject.github.io/adirondax-benchmarks) to view timing of benchmark test problems (for Developers).
+* [Documentation](https://adirondax.readthedocs.io) for up-to-date information about installing and using Adirondax.
+* [asv benchmarks](https://adirondaxproject.github.io/adirondax-benchmarks) to view code timing and memory benchmarks (for Developers).
 
 
 ## Cite this repository
+
+If you use this software, please cite it as below.
 
