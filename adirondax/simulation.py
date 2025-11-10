@@ -2,10 +2,11 @@ import jax
 import jax.numpy as jnp
 
 from .constants import constants
+from .hydro.common2d import hydro_accelerate
 from .hydro.euler2d import hydro_euler2d_fluxes, hydro_euler2d_timestep
 from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
 from .quantum import quantum_kick, quantum_drift, quantum_timestep
-from .gravity import calculate_gravitational_potential
+from .gravity import calculate_gravitational_potential, get_acceleration
 from .utils import set_up_parameters, print_parameters
 
 
@@ -112,9 +113,9 @@ class Simulation:
         ny = self.resolution[1]
         dx = Lx / nx
         dy = Ly / ny
-        xlin = jnp.linspace(0.5 * dx, Lx - 0.5 * dx, nx)
-        ylin = jnp.linspace(0.5 * dy, Ly - 0.5 * dy, ny)
-        X, Y = jnp.meshgrid(xlin, ylin, indexing="ij")
+        x_lin = jnp.linspace(0.5 * dx, Lx - 0.5 * dx, nx)
+        y_lin = jnp.linspace(0.5 * dy, Ly - 0.5 * dy, ny)
+        X, Y = jnp.meshgrid(x_lin, y_lin, indexing="ij")
         return X, Y
 
     @property
@@ -123,9 +124,12 @@ class Simulation:
         Return the simulation spectral grid
         """
         Lx = self.box_size[0]
+        Ly = self.box_size[1]
         nx = self.resolution[0]
-        klin = (2.0 * jnp.pi / Lx) * jnp.arange(-nx / 2, nx / 2)
-        kx, ky = jnp.meshgrid(klin, klin)
+        ny = self.resolution[1]
+        kx_lin = (2.0 * jnp.pi / Lx) * jnp.arange(-nx / 2, nx / 2)
+        ky_lin = (2.0 * jnp.pi / Ly) * jnp.arange(-ny / 2, ny / 2)
+        kx, ky = jnp.meshgrid(kx_lin, ky_lin, indexing="ij")
         kx = jnp.fft.ifftshift(kx)
         ky = jnp.fft.ifftshift(ky)
         return kx, ky
@@ -251,6 +255,12 @@ class Simulation:
             if use_gravity or use_external_potential:
                 if use_quantum:
                     state["psi"] = quantum_kick(state["psi"], V, m_per_hbar, dt / 2.0)
+                if use_hydro:
+                    kx, ky = self.kgrid
+                    ax, ay = get_acceleration(V, kx, ky)
+                    state["vx"], state["vy"] = hydro_accelerate(
+                        state["vx"], state["vy"], ax, ay, dt
+                    )
 
         def _drift(state, k_sq, dt):
             # Drift (full-step)
