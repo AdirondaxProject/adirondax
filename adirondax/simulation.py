@@ -115,8 +115,8 @@ class Simulation:
         dy = Ly / ny
         x_lin = jnp.linspace(0.5 * dx, Lx - 0.5 * dx, nx)
         y_lin = jnp.linspace(0.5 * dy, Ly - 0.5 * dy, ny)
-        X, Y = jnp.meshgrid(x_lin, y_lin, indexing="ij")
-        return X, Y
+        xx, yy = jnp.meshgrid(x_lin, y_lin, indexing="ij")
+        return xx, yy
 
     @property
     def kgrid(self):
@@ -248,8 +248,16 @@ class Simulation:
             # Kick (half-step)
 
             # update potential
-            if use_gravity:
+            if use_gravity and use_external_potential:
+                xx, yy = self.mesh
+                V = self._calc_grav_potential(
+                    state, k_sq, G, use_quantum, use_hydro
+                ) + self.external_potential(xx, yy)
+            elif use_gravity:
                 V = self._calc_grav_potential(state, k_sq, G, use_quantum, use_hydro)
+            elif use_external_potential:
+                xx, yy = self.mesh
+                V = self.external_potential(xx, yy)
 
             # apply
             if use_gravity or use_external_potential:
