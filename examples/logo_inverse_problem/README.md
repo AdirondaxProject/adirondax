@@ -1,4 +1,4 @@
-# Inverse Problem Schrodinger-Poisson
+# Logo Inverse Problem
 
 Inverse problem with the Schrodinger-Poisson system.
 Find initial phases that evolve system into the JAX logo.
@@ -8,10 +8,10 @@ Philip Mocz (2025)
 Usage:
 
 ```console
-python inverse_problem_schrodinger_poisson.py
+python logo_inverse_problem.py
 ```
 
-Takes around 4 seconds to run on my macbook (cpu).
+Takes around 2 seconds to run on my macbook (cpu).
 
 
 ## Simulation snapshots

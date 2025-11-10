@@ -1,4 +1,4 @@
-# Kelvin-Helmholtz Instability
+# Kelvin-Helmholtz
 
 Simulate the Kelvin-Helmholtz Instability (Euler equations)
 
@@ -7,7 +7,7 @@ Philip Mocz (2025)
 Usage:
 
 ```console
-python kelvin_helmholtz_instability.py
+python kelvin_helmholtz.py
 ```
 
 Takes around 6 seconds to run on my macbook (cpu).

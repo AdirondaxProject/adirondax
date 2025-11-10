@@ -37,6 +37,10 @@
     "resolution": { 
       "default": [32, 32],
       "description": "resolution per each dimension."
+    },
+    "boundary_condition": {
+      "default": ["periodic", "periodic"],
+      "description": "options: 'periodic', 'reflective' (per dimension)."
     }
   },
   "time": {

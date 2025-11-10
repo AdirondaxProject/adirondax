@@ -63,6 +63,9 @@ class Simulation:
         # extra info to keep track of
         self.state["steps_taken"] = jnp.array(0) + jnp.nan
 
+        # functions
+        self.external_potential = None
+
     @property
     def resolution(self):
         """
@@ -127,8 +130,7 @@ class Simulation:
         ky = jnp.fft.ifftshift(ky)
         return kx, ky
 
-    def _calc_grav_potential(self, state, k_sq, use_quantum, use_hydro):
-        G = 4000.0  # XXX
+    def _calc_grav_potential(self, state, k_sq, G, use_quantum, use_hydro):
         rho_tot = 0.0
         if use_quantum:
             rho_tot += jnp.abs(state["psi"]) ** 2
@@ -148,6 +150,7 @@ class Simulation:
         return self._calc_grav_potential(
             self.state,
             k_sq,
+            constants["gravitational_constant"],
             self.params["physics"]["quantum"],
             self.params["physics"]["hydro"],
         )
@@ -185,6 +188,9 @@ class Simulation:
         use_magnetic = self.params["physics"]["magnetic"]
         use_quantum = self.params["physics"]["quantum"]
         use_gravity = self.params["physics"]["gravity"]
+        use_external_potential = self.params["physics"]["external_potential"]
+
+        G = constants["gravitational_constant"]
 
         gamma = self.params["hydro"]["eos"]["gamma"]
         cfl = self.params["hydro"]["cfl"]
@@ -199,72 +205,69 @@ class Simulation:
             kx, ky = self.kgrid
             k_sq = kx**2 + ky**2
 
-        # Initialize potential
-        V = None
-        if use_gravity:
-            V = self._calc_grav_potential(state, k_sq, use_quantum, use_hydro)
-
         # Build the carry:
-        carry = (state, V, k_sq)
+        carry = (state, k_sq)
 
-        def step_fn(carry):
-            """
-            Pure step function: advances state by one timestep.
-            """
-            state, V, k_sq = carry
-
-            # Create new state dict to avoid mutation
-            new_state = {}
-
-            # Get the timestep
-            dt = dt_ref
-            if use_adaptive_timesteps:
-                dt = jnp.inf
-                if use_hydro:
-                    if use_magnetic:
-                        dt_hydro = hydro_mhd2d_timestep(
-                            state["rho"],
-                            state["vx"],
-                            state["vy"],
-                            state["P"],
-                            state["bx"],
-                            state["by"],
-                            gamma,
-                            dx,
-                            dy,
-                        )
-                    else:
-                        dt_hydro = hydro_euler2d_timestep(
-                            state["rho"],
-                            state["vx"],
-                            state["vy"],
-                            state["P"],
-                            gamma,
-                            dx,
-                            dy,
-                        )
-                    dt = jnp.minimum(dt, cfl * dt_hydro)
-                if use_quantum:
-                    dt_quantum = quantum_timestep(m_per_hbar, dx, dy)
-                    dt = jnp.minimum(dt, dt_quantum)
-                dt = jnp.minimum(dt, t_span - state["t"])
-
-            # Kick (half-step) - quantum + gravity
-            psi = state.get("psi")
-            if use_quantum and use_gravity and psi is not None:
-                psi = quantum_kick(psi, V, m_per_hbar, dt / 2.0)
-
-            # Drift (full-step) - quantum
-            if use_quantum and psi is not None:
-                psi = quantum_drift(psi, k_sq, m_per_hbar, dt)
-
-            if use_quantum:
-                new_state["psi"] = psi
-
-            # Drift (full-step) - hydro
+        def _get_timestep(state):
+            dt = jnp.inf
             if use_hydro:
                 if use_magnetic:
-                    rho, vx, vy, P, bx, by = hydro_mhd2d_fluxes(
+                    dt_hydro = hydro_mhd2d_timestep(
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                        state["bx"],
+                        state["by"],
+                        gamma,
+                        dx,
+                        dy,
+                    )
+                else:
+                    dt_hydro = hydro_euler2d_timestep(
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                        gamma,
+                        dx,
+                        dy,
+                    )
+                dt = jnp.minimum(dt, cfl * dt_hydro)
+            if use_quantum:
+                dt_quantum = quantum_timestep(m_per_hbar, dx, dy)
+                dt = jnp.minimum(dt, dt_quantum)
+            dt = jnp.minimum(dt, t_span - state["t"])
+            return dt
+
+        def _kick(state, k_sq, dt):
+            # Kick (half-step)
+
+            # update potential
+            if use_gravity:
+                V = self._calc_grav_potential(state, k_sq, G, use_quantum, use_hydro)
+
+            # apply
+            if use_gravity or use_external_potential:
+                if use_quantum:
+                    state["psi"] = quantum_kick(state["psi"], V, m_per_hbar, dt / 2.0)
+
+        def _drift(state, k_sq, dt):
+            # Drift (full-step)
+
+            if use_quantum:
+                state["psi"] = quantum_drift(state["psi"], k_sq, m_per_hbar, dt)
+
+            if use_hydro:
+                if use_magnetic:
+                    (
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                        state["bx"],
+                        state["by"],
+                    ) = hydro_mhd2d_fluxes(
                         state["rho"],
                         state["vx"],
                         state["vy"],
@@ -278,63 +281,60 @@ class Simulation:
                         riemann_solver_type,
                         use_slope_limiting,
                     )
-                    new_state["rho"] = rho
-                    new_state["vx"] = vx
-                    new_state["vy"] = vy
-                    new_state["P"] = P
-                    new_state["bx"] = bx
-                    new_state["by"] = by
                 else:
-                    rho, vx, vy, P = hydro_euler2d_fluxes(
-                        state["rho"],
-                        state["vx"],
-                        state["vy"],
-                        state["P"],
-                        gamma,
-                        dx,
-                        dy,
-                        dt,
-                        riemann_solver_type,
-                        use_slope_limiting,
+                    state["rho"], state["vx"], state["vy"], state["P"] = (
+                        hydro_euler2d_fluxes(
+                            state["rho"],
+                            state["vx"],
+                            state["vy"],
+                            state["P"],
+                            gamma,
+                            dx,
+                            dy,
+                            dt,
+                            riemann_solver_type,
+                            use_slope_limiting,
+                        )
                     )
-                    new_state["rho"] = rho
-                    new_state["vx"] = vx
-                    new_state["vy"] = vy
-                    new_state["P"] = P
 
-            # Update potential
-            new_V = V
-            if use_gravity:
-                new_V = self._calc_grav_potential(
-                    new_state, k_sq, use_quantum, use_hydro
-                )
+        def step_fn(carry):
+            """
+            Pure step function: advances state by one timestep.
+            """
+            state, k_sq = carry
 
-            # Kick (half-step) - quantum + gravity
-            if use_quantum and use_gravity:
-                new_state["psi"] = quantum_kick(new_state["psi"], new_V, 1.0, dt / 2.0)
+            # Get the timestep
+            dt = dt_ref
+            if use_adaptive_timesteps:
+                dt = _get_timestep(state)
+
+            # kick-drift-kick
+            _kick(state, k_sq, 0.5 * dt)
+            _drift(state, k_sq, dt)
+            _kick(state, k_sq, 0.5 * dt)
 
             # Update time
-            new_state["t"] = state["t"] + dt
+            state["t"] = state["t"] + dt
 
             # Update diagnostics
-            new_state["steps_taken"] = state["steps_taken"] + 1
+            state["steps_taken"] = state["steps_taken"] + 1
 
-            return (new_state, new_V, k_sq)
+            return (state, k_sq)
 
         # Run the entire loop as a single JIT-compiled function
         def run_loop(carry):
             if use_adaptive_timesteps:
                 # def cond_fn(carry):
-                #    state, _, _ = carry
+                #    state, _ = carry
                 #    return state["t"] < t_span * (1.0 - 1e-10)
 
                 # final_carry = jax.lax.while_loop(cond_fn, step_fn, carry)
 
                 # do a simple while loop
-                state, _, _ = carry
+                state, _ = carry
                 while state["t"] < t_span * (1.0 - 1e-10):
                     carry = step_fn(carry)
-                    state, _, _ = carry
+                    state, _ = carry
                 final_carry = carry
             else:
 
@@ -348,7 +348,7 @@ class Simulation:
             return final_carry
 
         # Execute the compiled loop
-        state, _, _ = run_loop(carry)
+        state, _ = run_loop(carry)
 
         return state
 

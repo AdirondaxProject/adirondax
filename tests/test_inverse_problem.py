@@ -9,7 +9,7 @@ import matplotlib.image as img
 def read_target():
     file_path = os.path.join(
         os.path.dirname(__file__),
-        "../examples/inverse_problem_schrodinger_poisson/target.png",
+        "../examples/logo_inverse_problem/target.png",
     )
     target_data = img.imread(file_path)[:, :, 0]
     rho_target = jnp.flipud(jnp.array(target_data, dtype=float))
