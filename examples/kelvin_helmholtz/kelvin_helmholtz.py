@@ -19,7 +19,7 @@ Philip Mocz (2025)
 def set_up_simulation():
     # Define the parameters for the simulation
     n = 256
-    nt = 1500 * int(n / 128)
+    nt = 400 * int(n / 32)
     t_stop = 2.0
 
     params = {
@@ -34,6 +34,11 @@ def set_up_simulation():
         "time": {
             "span": t_stop,
             "num_timesteps": nt,
+        },
+        "output": {
+            "num_checkpoints": 10,
+            "save": True,
+            "plot_dynamic_range": 2.0,
         },
         "hydro": {
             "eos": {"type": "ideal", "gamma": 5.0 / 3.0},

@@ -10,7 +10,7 @@ Usage:
 python kelvin_helmholtz.py
 ```
 
-Takes around 6 seconds to run on my macbook (cpu).
+Takes around 9 seconds to run on my macbook (cpu).
 
 
 ## Simulation snapshots

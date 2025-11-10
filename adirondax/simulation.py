@@ -1,5 +1,8 @@
 import jax
 import jax.numpy as jnp
+import orbax.checkpoint as ocp
+import json
+import os
 
 from .constants import constants
 from .hydro.common2d import hydro_accelerate
@@ -8,6 +11,7 @@ from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
 from .quantum import quantum_kick, quantum_drift, quantum_timestep
 from .gravity import calculate_gravitational_potential, get_acceleration
 from .utils import set_up_parameters, print_parameters
+from .visualization import plot_sim
 
 
 class Simulation:
@@ -39,6 +43,14 @@ class Simulation:
             and not self.params["physics"]["magnetic"]
         ):
             raise ValueError("'hlld' riemann solver only exists for magnetic=True")
+
+        if self.params["output"]["save"] and self.params["time"]["num_timesteps"] > 0:
+            if (
+                self.params["time"]["num_timesteps"]
+                % self.params["output"]["num_checkpoints"]
+                != 0
+            ):
+                raise ValueError("'num_checkpoints' must divide 'num_timesteps'")
 
         # print info
         if jax.process_index() == 0:
@@ -194,8 +206,10 @@ class Simulation:
         use_gravity = self.params["physics"]["gravity"]
         use_external_potential = self.params["physics"]["external_potential"]
 
+        # constants
         G = constants["gravitational_constant"]
 
+        # physics variables
         gamma = self.params["hydro"]["eos"]["gamma"]
         cfl = self.params["hydro"]["cfl"]
         riemann_solver_type = self.params["hydro"]["riemann_solver"]
@@ -208,6 +222,17 @@ class Simulation:
         if use_gravity or use_quantum:
             kx, ky = self.kgrid
             k_sq = kx**2 + ky**2
+
+        # Checkpointer
+        save = self.params["output"]["save"]
+        num_checkpoints = self.params["output"]["num_checkpoints"]
+        if save:
+            checkpoint_dir = checkpoint_dir = os.path.join(
+                os.getcwd(), self.params["output"]["path"]
+            )
+            path = os.path.join(os.getcwd(), checkpoint_dir)
+            if jax.process_index() == 0:
+                path = ocp.test_utils.erase_and_create_empty(checkpoint_dir)
 
         # Build the carry:
         carry = (state, k_sq)
@@ -342,30 +367,49 @@ class Simulation:
         # Run the entire loop as a single JIT-compiled function
         def run_loop(carry):
             if use_adaptive_timesteps:
-                # def cond_fn(carry):
-                #    state, _ = carry
-                #    return state["t"] < t_span * (1.0 - 1e-10)
+                if save:
+                    raise NotImplementedError("implement me.")
+                else:
+                    # def cond_fn(carry):
+                    #    state, _ = carry
+                    #    return state["t"] < t_span * (1.0 - 1e-10)
 
-                # final_carry = jax.lax.while_loop(cond_fn, step_fn, carry)
+                    # carry = jax.lax.while_loop(cond_fn, step_fn, carry)
 
-                # do a simple while loop
-                state, _ = carry
-                while state["t"] < t_span * (1.0 - 1e-10):
-                    carry = step_fn(carry)
+                    # do a simple while loop
                     state, _ = carry
-                final_carry = carry
+                    while state["t"] < t_span * (1.0 - 1e-10):
+                        carry = step_fn(carry)
+                        state, _ = carry
             else:
 
                 def step_fn_stacked(carry, _):
                     # Returns new carry and None (no stacked outputs) for jax.lax.scan()
                     return step_fn(carry), None
 
-                final_carry, _ = jax.lax.scan(
-                    step_fn_stacked, carry, xs=None, length=nt
-                )
-            return final_carry
+                if save:
+                    nt_sub = int(round(nt / num_checkpoints))
+                    for i in range(1, num_checkpoints + 1):
+                        carry, _ = jax.lax.scan(
+                            step_fn_stacked, carry, xs=None, length=nt_sub
+                        )
+                        state, _ = carry
+                        jax.block_until_ready(state)
+                        # save state
+                        plot_sim(state, checkpoint_dir, i, self.params)
+                else:
+                    carry, _ = jax.lax.scan(step_fn_stacked, carry, xs=None, length=nt)
+                return carry
 
-        # Execute the compiled loop
+        # save initial state
+        if jax.process_index() == 0:
+            print(f"Starting simulation (res={self.resolution}, nt={nt}) ...")
+        if self.params["output"]["save"]:
+            with open(os.path.join(checkpoint_dir, "params.json"), "w") as f:
+                json.dump(self.params, f, indent=2)
+            plot_sim(state, checkpoint_dir, 0, self.params)
+
+        # Simulation Main Loop
         state, _ = run_loop(carry)
 
         return state

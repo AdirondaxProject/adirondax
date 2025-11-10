@@ -163,4 +163,9 @@ cython_debug/
 
 # Extras
 .DS_Store
-.asv/
+*~
+checkpoints*/
+.vscode/
+slurm-*.out
+slurm-*.err
+ffmpeg*log
