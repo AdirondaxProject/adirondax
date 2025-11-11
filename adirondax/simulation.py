@@ -47,6 +47,19 @@ class Simulation:
         ):
             raise ValueError("'hlld' riemann solver only exists for magnetic=True")
 
+        if (
+            self.params["mesh"]["boundary_condition"][0] != "periodic"
+            or self.params["mesh"]["boundary_condition"][1] != "periodic"
+        ):
+            if self.params["physics"]["quantum"]:
+                raise NotImplementedError(
+                    "Quantum only implemented for periodic boundary conditions."
+                )
+            if self.params["physics"]["gravity"]:
+                raise NotImplementedError(
+                    "Gravity only implemented for periodic boundary conditions."
+                )
+
         if self.params["output"]["save"] and self.params["time"]["num_timesteps"] > 0:
             if (
                 self.params["time"]["num_timesteps"]
@@ -198,9 +211,15 @@ class Simulation:
         dy = Ly / ny
         nt = self.params["time"]["num_timesteps"]
         t_span = self.params["time"]["span"]
+        bc_x = self.params["mesh"]["boundary_condition"][0]
+        bc_y = self.params["mesh"]["boundary_condition"][1]
 
         use_adaptive_timesteps = True if nt < 1 else False
         dt_ref = jnp.nan if use_adaptive_timesteps else t_span / nt
+
+        # boundary conditions
+        bc_x_is_reflective = True if bc_x == "reflective" else False
+        bc_y_is_reflective = True if bc_y == "reflective" else False
 
         # Physics flags
         use_hydro = self.params["physics"]["hydro"]
@@ -290,14 +309,25 @@ class Simulation:
             # apply
             if use_gravity or use_external_potential:
                 if use_quantum:
-                    state["psi"] = quantum_kick(state["psi"], V, m_per_hbar, dt / 2.0)
+                    state["psi"] = quantum_kick(state["psi"], V, m_per_hbar, dt)
                 if use_hydro:
                     if use_magnetic:
                         raise NotImplementedError("implement me.")
                     kx, ky = self.kgrid
-                    ax, ay = get_acceleration(V, kx, ky)
+                    ax, ay = get_acceleration(
+                        V, kx, ky, dx, dy, bc_x_is_reflective, bc_y_is_reflective
+                    )
                     state["vx"], state["vy"], state["P"] = hydro_euler2d_accelerate(
-                        state["rho"], state["vx"], state["vy"], state["P"], ax, ay, dt
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                        ax,
+                        ay,
+                        gamma,
+                        dx,
+                        dy,
+                        dt,
                     )
 
         def _drift(state, k_sq, dt):
@@ -342,6 +372,8 @@ class Simulation:
                             dt,
                             riemann_solver_type,
                             use_slope_limiting,
+                            bc_x_is_reflective,
+                            bc_y_is_reflective,
                         )
                     )
 

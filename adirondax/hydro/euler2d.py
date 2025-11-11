@@ -100,10 +100,78 @@ def hydro_euler2d_timestep(rho, vx, vy, P, gamma, dx, dy):
     return dt
 
 
+def add_ghost_cells(rho, vx, vy, P, axis):
+    """Add ghost cells for reflective boundary conditions along given axis"""
+
+    if axis == 0:
+        # x-axis
+        rho_new = jnp.concatenate((rho[0:1, :], rho, rho[-1:, :]), axis=0)
+        vx_new = jnp.concatenate((-vx[0:1, :], vx, -vx[-1:, :]), axis=0)
+        vy_new = jnp.concatenate((vy[0:1, :], vy, vy[-1:, :]), axis=0)
+        P_new = jnp.concatenate((P[0:1, :], P, P[-1:, :]), axis=0)
+    elif axis == 1:
+        # y-axis
+        rho_new = jnp.concatenate((rho[:, 0:1], rho, rho[:, -1:]), axis=1)
+        vx_new = jnp.concatenate((vx[:, 0:1], vx, vx[:, -1:]), axis=1)
+        vy_new = jnp.concatenate((-vy[:, 0:1], vy, -vy[:, -1:]), axis=1)
+        P_new = jnp.concatenate((P[:, 0:1], P, P[:, -1:]), axis=1)
+
+    return rho_new, vx_new, vy_new, P_new
+
+
+def remove_ghost_cells(Mass, Momx, Momy, Energy, axis):
+    """Remove ghost cells for reflective boundary conditions along given axis"""
+
+    if axis == 0:
+        # x-axis
+        Mass_new = Mass[1:-1, :]
+        Momx_new = Momx[1:-1, :]
+        Momy_new = Momy[1:-1, :]
+        Energy_new = Energy[1:-1, :]
+    elif axis == 1:
+        # y-axis
+        Mass_new = Mass[:, 1:-1]
+        Momx_new = Momx[:, 1:-1]
+        Momy_new = Momy[:, 1:-1]
+        Energy_new = Energy[:, 1:-1]
+
+    return Mass_new, Momx_new, Momy_new, Energy_new
+
+
+def set_ghost_gradients(f_dx, axis):
+    """Set gradients in ghost cells to (-1) x  value of the first interior cell (f_dx already has ghost cells)"""
+
+    if axis == 0:
+        f_dx = f_dx.at[0, :].set(-f_dx[1, :])
+        f_dx = f_dx.at[-1, :].set(-f_dx[-2, :])
+    elif axis == 1:
+        f_dx = f_dx.at[:, 0].set(-f_dx[:, 1])
+        f_dx = f_dx.at[:, -1].set(-f_dx[:, -2])
+
+    return f_dx
+
+
 def hydro_euler2d_fluxes(
-    rho, vx, vy, P, gamma, dx, dy, dt, riemann_solver_type, use_slope_limiting
+    rho,
+    vx,
+    vy,
+    P,
+    gamma,
+    dx,
+    dy,
+    dt,
+    riemann_solver_type,
+    use_slope_limiting,
+    bc_x_is_reflective,
+    bc_y_is_reflective,
 ):
     """Take a simulation timestep"""
+
+    # Add Ghost Cells (if needed)
+    if bc_x_is_reflective:
+        rho, vx, vy, P = add_ghost_cells(rho, vx, vy, P, axis=0)
+    if bc_y_is_reflective:
+        rho, vx, vy, P = add_ghost_cells(rho, vx, vy, P, axis=1)
 
     # get Conserved variables
     Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, gamma, dx * dy)
@@ -120,6 +188,18 @@ def hydro_euler2d_fluxes(
         vx_dx, vx_dy = slope_limit(vx, vx_dx, vx_dy, dx, dy)
         vy_dx, vy_dy = slope_limit(vy, vy_dx, vy_dy, dx, dy)
         P_dx, P_dy = slope_limit(P, P_dx, P_dy, dx, dy)
+
+    # set ghost cell gradients
+    if bc_x_is_reflective:
+        rho_dx = set_ghost_gradients(rho_dx, axis=0)
+        vx_dx = set_ghost_gradients(vx_dx, axis=0)
+        vy_dx = set_ghost_gradients(vy_dx, axis=0)
+        P_dx = set_ghost_gradients(P_dx, axis=0)
+    if bc_y_is_reflective:
+        rho_dy = set_ghost_gradients(rho_dy, axis=1)
+        vx_dy = set_ghost_gradients(vx_dy, axis=1)
+        vy_dy = set_ghost_gradients(vy_dy, axis=1)
+        P_dy = set_ghost_gradients(P_dy, axis=1)
 
     # extrapolate half-step in time
     rho_prime = rho - 0.5 * dt * (vx * rho_dx + rho * vx_dx + vy * rho_dy + rho * vy_dy)
@@ -167,15 +247,23 @@ def hydro_euler2d_fluxes(
     Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dy, dt)
     Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dy, dt)
 
+    # remove ghost cells
+    if bc_x_is_reflective:
+        Mass, Momx, Momy, Energy = remove_ghost_cells(Mass, Momx, Momy, Energy, axis=0)
+    if bc_y_is_reflective:
+        Mass, Momx, Momy, Energy = remove_ghost_cells(Mass, Momx, Momy, Energy, axis=1)
+
     rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, gamma, dx * dy)
 
     return rho, vx, vy, P
 
 
-def hydro_euler2d_accelerate(rho, vx, vy, P, ax, ay, gamma, dt):
-    e = P / ((gamma - 1.0) * rho)
-    e_new = e + dt * (ax * vx + ay * vy)
-    P_new = (gamma - 1.0) * rho * e_new
-    vx_new = vx + dt * ax
-    vy_new = vy + dt * ay
+def hydro_euler2d_accelerate(rho, vx, vy, P, ax, ay, gamma, dx, dy, dt):
+    Mass, Momx, Momy, Energy = get_conserved(rho, vx, vy, P, gamma, dx * dy)
+
+    Energy += dt * (Momx * ax + Momy * ay)
+    Momx += dt * Mass * ax
+    Momy += dt * Mass * ay
+
+    _, vx_new, vy_new, P_new = get_primitive(Mass, Momx, Momy, Energy, gamma, dx * dy)
     return vx_new, vy_new, P_new

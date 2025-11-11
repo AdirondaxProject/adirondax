@@ -3,7 +3,7 @@
 # Usage: ./make_gif.sh /path/to/folder output.gif
 
 folder="$1"
-output="${2:-output.gif}"
+output="${2:-movie.gif}"
 
 if [ -z "$folder" ]; then
   echo "Usage: $0 /path/to/folder [output.gif]"
