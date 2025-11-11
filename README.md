@@ -56,19 +56,19 @@ See the docs for more info on how to [build from source](https://adirondax.readt
 
 ## Examples
 
-Check out the [`examples/`](https://github.com/Adirondax/adirondax/tree/main/examples/) directory for demonstrations of using Adirondax.
+Check out the [`examples/`](https://github.com/AdirondaxProject/adirondax/tree/main/examples/) directory for demonstrations of using Adirondax.
 
 <p align="center">
-  <a href="https://github.com/Adirondax/adirondax/tree/main/examples/kelvin_helmholtz">
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/kelvin_helmholtz">
     <img src="examples/kelvin_helmholtz/movie.gif" alt="kelvin_helmholtz" height="128"/>
   </a>
-  <a href="https://github.com/Adirondax/adirondax/tree/main/examples/logo_inverse_problem">
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/logo_inverse_problem">
     <img src="examples/logo_inverse_problem/movie.gif" alt="logo_inverse_problem" height="128"/>
   </a>
-  <a href="https://github.com/Adirondax/adirondax/tree/main/examples/orszag_tang">
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/orszag_tang">
     <img src="examples/orszag_tang/movie.gif" alt="orszag_tang" height="128"/>
   </a>
-  <a href="https://github.com/Adirondax/adirondax/tree/main/examples/rayleigh_taylor">
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/rayleigh_taylor">
     <img src="examples/rayleigh_taylor/movie.gif" alt="orszag_tang" height="128"/>
   </a>
   <br>
