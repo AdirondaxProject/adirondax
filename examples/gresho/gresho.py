@@ -53,20 +53,27 @@ def set_up_simulation():
     sim.state["t"] = 0.0
     X, Y = sim.mesh
     R = jnp.sqrt((X - 0.5) ** 2 + (Y - 0.5) ** 2)
+
     def v_phi(r):
         return jnp.where(
             r < 0.2,
             5.0 * r,
             jnp.where(r < 0.4, 2.0 - 5.0 * r, 0.0),
         )
+
     def P0(r):
         return jnp.where(
             r < 0.2,
             5.0 + 12.5 * r**2,
-            jnp.where(r < 0.4, 9.0 + 12.5 * r**2 - 20.0 * r + 4.0 * jnp.log(r / 0.2), 3.0 + 4.0 * jnp.log(2.0)),
+            jnp.where(
+                r < 0.4,
+                9.0 + 12.5 * r**2 - 20.0 * r + 4.0 * jnp.log(r / 0.2),
+                3.0 + 4.0 * jnp.log(2.0),
+            ),
         )
-    vx = -v_phi(R) * (Y - 0.5) / (R + (R==0))
-    vy = v_phi(R) * (X - 0.5) / (R + (R==0))
+
+    vx = -v_phi(R) * (Y - 0.5) / (R + (R == 0))
+    vy = v_phi(R) * (X - 0.5) / (R + (R == 0))
     sim.state["rho"] = jnp.ones(X.shape)
     sim.state["vx"] = vx
     sim.state["vy"] = vy
@@ -78,7 +85,7 @@ def set_up_simulation():
 def make_plot(sim):
     # Plot the solution
     plt.figure(figsize=(6, 4), dpi=80)
-    v_phi = jnp.sqrt(sim.state["vx"]**2 + sim.state["vy"]**2)
+    v_phi = jnp.sqrt(sim.state["vx"] ** 2 + sim.state["vy"] ** 2)
     plt.imshow(v_phi.T, cmap="jet", vmin=0.0, vmax=1.0)
     plt.gca().invert_yaxis()
     plt.colorbar(label="v_phi")
