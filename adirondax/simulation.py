@@ -5,8 +5,11 @@ import json
 import os
 
 from .constants import constants
-from .hydro.common2d import hydro_accelerate
-from .hydro.euler2d import hydro_euler2d_fluxes, hydro_euler2d_timestep
+from .hydro.euler2d import (
+    hydro_euler2d_fluxes,
+    hydro_euler2d_timestep,
+    hydro_euler2d_accelerate,
+)
 from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
 from .quantum import quantum_kick, quantum_drift, quantum_timestep
 from .gravity import calculate_gravitational_potential, get_acceleration
@@ -289,10 +292,12 @@ class Simulation:
                 if use_quantum:
                     state["psi"] = quantum_kick(state["psi"], V, m_per_hbar, dt / 2.0)
                 if use_hydro:
+                    if use_magnetic:
+                        raise NotImplementedError("implement me.")
                     kx, ky = self.kgrid
                     ax, ay = get_acceleration(V, kx, ky)
-                    state["vx"], state["vy"] = hydro_accelerate(
-                        state["vx"], state["vy"], ax, ay, dt
+                    state["vx"], state["vy"], state["P"] = hydro_euler2d_accelerate(
+                        state["rho"], state["vx"], state["vy"], state["P"], ax, ay, dt
                     )
 
         def _drift(state, k_sq, dt):

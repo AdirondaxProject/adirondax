@@ -1,3 +1,4 @@
+from math import gamma
 import jax.numpy as jnp
 
 # Pure functions for 2D hydrodynamics
@@ -102,9 +103,3 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dy, dt):
     )
 
     return F_new
-
-
-def hydro_accelerate(vx, vy, ax, ay, dt):
-    vx_new = vx + dt * ax
-    vy_new = vy + dt * ay
-    return vx_new, vy_new

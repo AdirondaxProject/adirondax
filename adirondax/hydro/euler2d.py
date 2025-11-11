@@ -170,3 +170,12 @@ def hydro_euler2d_fluxes(
     rho, vx, vy, P = get_primitive(Mass, Momx, Momy, Energy, gamma, dx * dy)
 
     return rho, vx, vy, P
+
+
+def hydro_euler2d_accelerate(rho, vx, vy, P, ax, ay, gamma, dt):
+    e = P / ((gamma - 1.0) * rho)
+    e_new = e + dt * (ax * vx + ay * vy)
+    P_new = (gamma - 1.0) * rho * e_new
+    vx_new = vx + dt * ax
+    vy_new = vy + dt * ay
+    return vx_new, vy_new, P_new
