@@ -45,17 +45,23 @@
        height="400.52988"
        id="rect2" />
   </defs>
+   <style>
+      /* Enable light/dark color schemes */
+      :root { color-scheme: light dark; }
+
+      /* Dark mode: switch logo text and dark accents to white */
+      @media (prefers-color-scheme: dark) {
+         #text1,
+         #rect1-09,
+         #rect1-09-7 {
+            fill: #ffffff !important;
+         }
+      }
+   </style>
   <g
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1">
-    <rect
-       style="fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:23.8221;stroke-opacity:1"
-       id="rect3"
-       width="559.99713"
-       height="89.959602"
-       x="0.011463818"
-       y="0.034583833" />
     <rect
        style="fill:#326484;fill-opacity:1;stroke-width:0.264584"
        id="rect1"
