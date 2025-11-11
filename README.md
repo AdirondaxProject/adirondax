@@ -14,6 +14,7 @@
 [![asv][asv-badge]][asv-link]
 [![Readthedocs Status][docs-badge]][docs-link]
 [![License][license-badge]][license-link]
+[![Software DOI][software-doi-badge]][software-doi-link]
 
 [status-link]:         https://www.repostatus.org/#active
 [status-badge]:        https://www.repostatus.org/badges/latest/active.svg
@@ -31,6 +32,9 @@
 [docs-badge]:          https://readthedocs.org/projects/adirondax/badge
 [license-link]:        https://opensource.org/licenses/Apache-2.0
 [license-badge]:       https://img.shields.io/badge/License-Apache_2.0-blue.svg
+[software-doi-link]:   https://doi.org/10.5281/zenodo.17584122
+[software-doi-badge]:  https://zenodo.org/badge/902479137.svg
+
 
 A differentiable astrophysics simulator in JAX
 
@@ -85,3 +89,14 @@ Check out the [`examples/`](https://github.com/AdirondaxProject/adirondax/tree/m
 
 If you use this software, please cite it as below.
 
+```bibtex
+@software{Mocz_Adirondax_2025,
+   author = {Mocz, Philip},
+      doi = {10.5281/zenodo.17584122},
+    month = nov,
+    title = {{Adirondax}},
+      url = {https://github.com/AdirondaxProject/adirondax},
+  version = {0.0.4},
+     year = {2025}
+}
+```

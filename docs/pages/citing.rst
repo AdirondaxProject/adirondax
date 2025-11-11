@@ -3,4 +3,7 @@ Citing
 
 If you use this software, please cite it as below.
 
-TODO
+.. literalinclude:: ../../README.md
+  :start-at: Mocz_Adirondax_2025
+  :end-before: ```
+  :language: latex
