@@ -12,25 +12,25 @@ Gallery
    :header-rows: 0
 
    * - .. figure:: ../../examples/kelvin_helmholtz/movie.gif
-         :height: 200px
+         :height: 128px
          :align: center
          :alt: kelvin_helmholtz
          :target: examples.html#kelvin-helmholtz
 
      - .. figure:: ../../examples/logo_inverse_problem/movie.gif
-         :height: 200px
+         :height: 128px
          :align: center
          :alt: logo_inverse_problem
          :target: examples.html#logo-inverse-problem
 
      - .. figure:: ../../examples/orszag_tang/movie.gif
-         :height: 200px
+         :height: 128px
          :align: center
          :alt: orszag_tang
          :target: examples.html#orszag-tang
 
      - .. figure:: ../../examples/rayleigh_taylor/movie.gif
-         :height: 200px
+         :height: 128px
          :align: center
          :alt: rayleigh_taylor
          :target: examples.html#rayleigh-taylor
@@ -40,7 +40,7 @@ kelvin_helmholtz
 ----------------
 
 .. figure:: ../../examples/kelvin_helmholtz/movie.gif
-  :height: 300px
+  :height: 256px
   :align: center
   :alt: kelvin_helmholtz
   :target: examples.html#kelvin-helmholtz
@@ -62,7 +62,7 @@ logo_inverse_problem
 --------------------
 
 .. figure:: ../../examples/logo_inverse_problem/movie.gif
-  :height: 300px
+  :height: 256px
   :align: center
   :alt: logo_inverse_problem
   :target: examples.html#logo-inverse-problem
@@ -84,7 +84,7 @@ orszag_tang
 -----------
 
 .. figure:: ../../examples/orszag_tang/movie.gif
-  :height: 300px
+  :height: 256px
   :align: center
   :alt: orszag_tang
   :target: examples.html#kelvin-helmholtz
@@ -106,7 +106,7 @@ rayleigh_taylor
 ---------------
 
 .. figure:: ../../examples/rayleigh_taylor/movie.gif
-  :height: 300px
+  :height: 256px
   :align: center
   :alt: rayleigh_taylor
   :target: examples.html#rayleigh-taylor
