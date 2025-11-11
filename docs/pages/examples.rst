@@ -8,33 +8,39 @@ Gallery
 -------
 
 .. list-table::
-   :widths: 32 32 32
+   :widths: 25 25 25 25
    :header-rows: 0
 
    * - .. figure:: ../../examples/kelvin_helmholtz/movie.gif
-         :width: 300px
+         :height: 200px
          :align: center
          :alt: kelvin_helmholtz
          :target: examples.html#kelvin-helmholtz
 
      - .. figure:: ../../examples/logo_inverse_problem/movie.gif
-         :width: 300px
+         :height: 200px
          :align: center
          :alt: logo_inverse_problem
          :target: examples.html#logo-inverse-problem
 
      - .. figure:: ../../examples/orszag_tang/movie.gif
-         :width: 300px
+         :height: 200px
          :align: center
          :alt: orszag_tang
          :target: examples.html#orszag-tang
+
+     - .. figure:: ../../examples/rayleigh_taylor/movie.gif
+         :height: 200px
+         :align: center
+         :alt: rayleigh_taylor
+         :target: examples.html#rayleigh-taylor
 
 
 kelvin_helmholtz
 ----------------
 
 .. figure:: ../../examples/kelvin_helmholtz/movie.gif
-  :width: 300px
+  :height: 300px
   :align: center
   :alt: kelvin_helmholtz
   :target: examples.html#kelvin-helmholtz
@@ -56,7 +62,7 @@ logo_inverse_problem
 --------------------
 
 .. figure:: ../../examples/logo_inverse_problem/movie.gif
-  :width: 300px
+  :height: 300px
   :align: center
   :alt: logo_inverse_problem
   :target: examples.html#logo-inverse-problem
@@ -78,7 +84,7 @@ orszag_tang
 -----------
 
 .. figure:: ../../examples/orszag_tang/movie.gif
-  :width: 300px
+  :height: 300px
   :align: center
   :alt: orszag_tang
   :target: examples.html#kelvin-helmholtz
@@ -94,3 +100,26 @@ Script:
 
 .. literalinclude:: ../../examples/orszag_tang/orszag_tang.py
   :language: python
+
+
+rayleigh_taylor
+---------------
+
+.. figure:: ../../examples/rayleigh_taylor/movie.gif
+  :height: 300px
+  :align: center
+  :alt: rayleigh_taylor
+  :target: examples.html#rayleigh-taylor
+
+  See on GitHub: `examples/rayleigh_taylor <https://github.com/AdirondaxProject/adirondax/tree/main/examples/rayleigh_taylor>`_
+
+README:
+
+.. literalinclude:: ../../examples/rayleigh_taylor/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/rayleigh_taylor/rayleigh_taylor.py
+  :language: python
+

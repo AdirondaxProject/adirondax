@@ -60,13 +60,16 @@ Check out the [`examples/`](https://github.com/Adirondax/adirondax/tree/main/exa
 
 <p align="center">
   <a href="https://github.com/Adirondax/adirondax/tree/main/examples/kelvin_helmholtz">
-    <img src="examples/kelvin_helmholtz/movie.gif" alt="kelvin_helmholtz" width="128"/>
+    <img src="examples/kelvin_helmholtz/movie.gif" alt="kelvin_helmholtz" height="128"/>
   </a>
   <a href="https://github.com/Adirondax/adirondax/tree/main/examples/logo_inverse_problem">
-    <img src="examples/logo_inverse_problem/movie.gif" alt="logo_inverse_problem" width="128"/>
+    <img src="examples/logo_inverse_problem/movie.gif" alt="logo_inverse_problem" height="128"/>
   </a>
   <a href="https://github.com/Adirondax/adirondax/tree/main/examples/orszag_tang">
-    <img src="examples/orszag_tang/movie.gif" alt="orszag_tang" width="128"/>
+    <img src="examples/orszag_tang/movie.gif" alt="orszag_tang" height="128"/>
+  </a>
+  <a href="https://github.com/Adirondax/adirondax/tree/main/examples/rayleigh_taylor">
+    <img src="examples/rayleigh_taylor/movie.gif" alt="orszag_tang" height="128"/>
   </a>
   <br>
 </p>

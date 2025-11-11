@@ -10,7 +10,7 @@ Usage:
 python rayleigh_taylor.py
 ```
 
-Takes around 7 seconds to run on my macbook (cpu).
+Takes around 9 seconds to run on my macbook (cpu).
 
 
 ## Simulation snapshots

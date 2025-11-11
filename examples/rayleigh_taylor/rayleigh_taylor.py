@@ -20,8 +20,8 @@ def set_up_simulation():
     # Define the parameters for the simulation
     nx = 64
     ny = 192
-    nt = 10000  #  -1
-    t_stop = 15.0
+    nt = 13000  #  -1
+    t_stop = 20.0
 
     params = {
         "physics": {
