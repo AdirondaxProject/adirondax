@@ -80,6 +80,7 @@ def solve_inverse_problem(sim):
     t0 = time.time()
     sol = opt.run(theta, rho_target)
     print("Inverse-problem solve time (s): ", time.time() - t0)
+    print("number of iterations: ", sol.state.iter_num)
     theta = jnp.mod(sol.params, 2.0 * jnp.pi) - jnp.pi
     print("Mean theta:", jnp.mean(theta))
 
