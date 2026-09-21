@@ -1,20 +1,21 @@
-import jax
-import jax.numpy as jnp
-import orbax.checkpoint as ocp
 import json
 import os
 
+import jax
+import jax.numpy as jnp
+import orbax.checkpoint as ocp
+
 from .constants import constants
+from .gravity import calculate_gravitational_potential, get_acceleration
 from .hydro.euler2d import (
+    hydro_euler2d_accelerate,
     hydro_euler2d_fluxes,
     hydro_euler2d_timestep,
-    hydro_euler2d_accelerate,
 )
-from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
 from .hydro.geometry import get_geometry
-from .quantum import quantum_kick, quantum_drift, quantum_timestep
-from .gravity import calculate_gravitational_potential, get_acceleration
-from .utils import set_up_parameters, print_parameters
+from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
+from .quantum import quantum_drift, quantum_kick, quantum_timestep
+from .utils import print_parameters, set_up_parameters
 from .visualization import plot_sim
 
 
@@ -96,13 +97,14 @@ class Simulation:
                     "Gravity only implemented for periodic boundary conditions."
                 )
 
-        if self.params["output"]["save"] and self.params["time"]["num_timesteps"] > 0:
-            if (
-                self.params["time"]["num_timesteps"]
-                % self.params["output"]["num_checkpoints"]
-                != 0
-            ):
-                raise ValueError("'num_checkpoints' must divide 'num_timesteps'")
+        if (
+            self.params["output"]["save"]
+            and self.params["time"]["num_timesteps"] > 0
+            and self.params["time"]["num_timesteps"]
+            % self.params["output"]["num_checkpoints"]
+            != 0
+        ):
+            raise ValueError("'num_checkpoints' must divide 'num_timesteps'")
 
         # print info
         if jax.process_index() == 0:
@@ -269,14 +271,14 @@ class Simulation:
         bc_x = self.params["mesh"]["boundary_condition"][0]
         bc_y = self.params["mesh"]["boundary_condition"][1]
 
-        use_adaptive_timesteps = True if nt < 1 else False
+        use_adaptive_timesteps = nt < 1
         dt_ref = jnp.nan if use_adaptive_timesteps else t_span / nt
 
         # boundary conditions. The cylindrical axis is a reflecting boundary
         # with an extra twist: the azimuthal velocity reverses through R=0.
-        bc_x_is_axis = True if bc_x == "axis" else False
-        bc_x_is_reflective = True if bc_x in ("reflective", "axis") else False
-        bc_y_is_reflective = True if bc_y == "reflective" else False
+        bc_x_is_axis = bc_x == "axis"
+        bc_x_is_reflective = bc_x in ("reflective", "axis")
+        bc_y_is_reflective = bc_y == "reflective"
 
         # mesh metric factors: 'geom' on the bare grid, 'geom_work' on the
         # ghost-extended grid the flux routine operates on
@@ -317,9 +319,7 @@ class Simulation:
         save = self.params["output"]["save"]
         num_checkpoints = self.params["output"]["num_checkpoints"]
         if save:
-            checkpoint_dir = checkpoint_dir = os.path.join(
-                os.getcwd(), self.params["output"]["path"]
-            )
+            checkpoint_dir = os.path.join(os.getcwd(), self.params["output"]["path"])
             path = os.path.join(os.getcwd(), checkpoint_dir)
             if jax.process_index() == 0:
                 path = ocp.test_utils.erase_and_create_empty(checkpoint_dir)
@@ -498,7 +498,7 @@ class Simulation:
                     return step_fn(carry), None
 
                 if save:
-                    nt_sub = int(round(nt / num_checkpoints))
+                    nt_sub = round(nt / num_checkpoints)
                     for i in range(1, num_checkpoints + 1):
                         carry, _ = jax.lax.scan(
                             step_fn_stacked, carry, xs=None, length=nt_sub

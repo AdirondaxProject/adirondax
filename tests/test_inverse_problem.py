@@ -1,9 +1,11 @@
 import os
+
 import jax
 import jax.numpy as jnp
-import adirondax as adx
-from jaxopt import ScipyMinimize
 import matplotlib.image as img
+from jaxopt import ScipyMinimize
+
+import adirondax as adx
 
 
 def read_target():

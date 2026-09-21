@@ -1,18 +1,14 @@
+import time
+from typing import NamedTuple
+
+import chex
 import jax
 import jax.numpy as jnp
-
-# TODO: REMOVE THE FOLLOWING LINES
-import sys
-
-sys.path.append("../../")
+import matplotlib.image as img
+import matplotlib.pyplot as plt
+import optax
 
 import adirondax as adx
-import chex
-from typing import NamedTuple
-import optax
-import time
-import matplotlib.pyplot as plt
-import matplotlib.image as img
 
 """
 Solve an Inverse-Problem that finds the initial wave function phases that

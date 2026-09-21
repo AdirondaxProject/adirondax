@@ -1,13 +1,9 @@
+import time
+
 import jax.numpy as jnp
-
-# TODO: REMOVE THE FOLLOWING LINES
-import sys
-
-sys.path.append("../../")
+import matplotlib.pyplot as plt
 
 import adirondax as adx
-import time
-import matplotlib.pyplot as plt
 
 """
 Simulate the Rayleigh-Taylor Instability

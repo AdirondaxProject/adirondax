@@ -1,11 +1,12 @@
 import jax.numpy as jnp
+
 from .common2d import (
-    get_curl,
+    apply_fluxes,
+    extrapolate_to_face,
     get_avg,
+    get_curl,
     get_gradient,
     slope_limit,
-    extrapolate_to_face,
-    apply_fluxes,
 )
 
 # Pure functions for 2D magnetohydrodynamics

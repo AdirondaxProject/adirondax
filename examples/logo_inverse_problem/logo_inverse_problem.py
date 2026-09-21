@@ -1,16 +1,12 @@
+import time
+
 import jax
 import jax.numpy as jnp
-
-# TODO: REMOVE THE FOLLOWING LINES
-import sys
-
-sys.path.append("../../")
+import matplotlib.image as img
+import matplotlib.pyplot as plt
+from jaxopt import ScipyMinimize
 
 import adirondax as adx
-from jaxopt import ScipyMinimize
-import time
-import matplotlib.pyplot as plt
-import matplotlib.image as img
 
 """
 Solve an Inverse-Problem that finds the initial wave function phases that

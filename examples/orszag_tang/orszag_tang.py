@@ -1,14 +1,10 @@
+import time
+
 import jax.numpy as jnp
-
-# TODO: REMOVE THE FOLLOWING LINES
-import sys
-
-sys.path.append("../../")
+import matplotlib.pyplot as plt
 
 import adirondax as adx
-from adirondax.hydro.common2d import get_curl, get_avg
-import time
-import matplotlib.pyplot as plt
+from adirondax.hydro.common2d import get_avg, get_curl
 
 # switch on for double precision
 # jax.config.update("jax_enable_x64", True)

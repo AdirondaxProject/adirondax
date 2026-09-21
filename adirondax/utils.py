@@ -1,10 +1,11 @@
-import sys
-import os
-import importlib.util
-from pathlib import Path
 import importlib.resources
+import importlib.util
 import json
-from importlib.metadata import version, PackageNotFoundError
+import os
+import sys
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+
 import jax
 
 
