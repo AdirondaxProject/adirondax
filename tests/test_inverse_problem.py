@@ -29,7 +29,7 @@ def set_up_params():
             "gravity": True,
         },
         "mesh": {
-            "type": "cartesian",
+            "geometry": "cartesian",
             "resolution": [n, n],
             "box_size": [1.0, 1.0],
         },

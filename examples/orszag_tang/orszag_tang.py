@@ -35,7 +35,7 @@ def set_up_simulation():
             "magnetic": True,
         },
         "mesh": {
-            "type": "cartesian",
+            "geometry": "cartesian",
             "resolution": [n, n],
             "box_size": [box_size, box_size],
         },

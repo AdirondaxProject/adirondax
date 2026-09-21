@@ -11,6 +11,7 @@ from .hydro.euler2d import (
     hydro_euler2d_accelerate,
 )
 from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
+from .hydro.geometry import get_geometry
 from .quantum import quantum_kick, quantum_drift, quantum_timestep
 from .gravity import calculate_gravitational_potential, get_acceleration
 from .utils import set_up_parameters, print_parameters
@@ -37,6 +38,41 @@ class Simulation:
 
         if self.dim == 3:
             raise NotImplementedError("3D is not yet implemented.")
+
+        if self.params["mesh"]["type"] not in ["eulerian", "lagrangian", "ale"]:
+            raise ValueError("mesh 'type' must be 'eulerian', 'lagrangian' or 'ale'")
+
+        if self.geometry not in ["cartesian", "cylindrical"]:
+            raise ValueError("mesh 'geometry' must be 'cartesian' or 'cylindrical'")
+
+        bc_x, bc_y = self.params["mesh"]["boundary_condition"][:2]
+
+        if bc_y == "axis":
+            raise ValueError(
+                "the 'axis' boundary condition only applies to dimension 0"
+            )
+
+        if self.is_cylindrical:
+            # R in [0, box_size[0]], z in [0, box_size[1]]
+            if bc_x != "axis":
+                raise ValueError(
+                    "cylindrical geometry requires boundary_condition[0] == 'axis'"
+                )
+            for physics in ["magnetic", "gravity", "quantum"]:
+                if self.params["physics"][physics]:
+                    raise NotImplementedError(
+                        f"'{physics}' is not yet implemented for cylindrical geometry."
+                    )
+        elif bc_x == "axis":
+            raise ValueError(
+                "the 'axis' boundary condition requires cylindrical geometry"
+            )
+
+        if self.params["physics"]["rotation"]:
+            if not self.is_cylindrical:
+                raise ValueError("'rotation' requires cylindrical geometry")
+            if not self.params["physics"]["hydro"]:
+                raise ValueError("'rotation' requires hydro")
 
         if self.params["hydro"]["riemann_solver"] not in ["llf", "hlld"]:
             raise ValueError("riemann solver does not exist")
@@ -81,6 +117,8 @@ class Simulation:
             self.state["vx"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["vy"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["P"] = jnp.zeros(self.resolution) + jnp.nan
+        if self.params["physics"]["rotation"]:
+            self.state["vphi"] = jnp.zeros(self.resolution) + jnp.nan
         if self.params["physics"]["magnetic"]:
             self.state["bx"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["by"] = jnp.zeros(self.resolution) + jnp.nan
@@ -110,6 +148,20 @@ class Simulation:
         return self.params["mesh"]["box_size"]
 
     @property
+    def geometry(self):
+        """
+        Return the geometry of the simulation mesh
+        """
+        return self.params["mesh"]["geometry"]
+
+    @property
+    def is_cylindrical(self):
+        """
+        Return whether the mesh is an axisymmetric cylindrical (R,z) mesh
+        """
+        return self.geometry == "cylindrical"
+
+    @property
     def dim(self):
         """
         Return the dimension of the simulation
@@ -133,7 +185,10 @@ class Simulation:
     @property
     def mesh(self):
         """
-        Return the simulation mesh
+        Return the simulation mesh (cell centers).
+
+        For cylindrical geometry the two returned arrays are (R, z), with
+        R in (0, box_size[0]) and z in (0, box_size[1]).
         """
         Lx = self.box_size[0]
         Ly = self.box_size[1]
@@ -217,15 +272,28 @@ class Simulation:
         use_adaptive_timesteps = True if nt < 1 else False
         dt_ref = jnp.nan if use_adaptive_timesteps else t_span / nt
 
-        # boundary conditions
-        bc_x_is_reflective = True if bc_x == "reflective" else False
+        # boundary conditions. The cylindrical axis is a reflecting boundary
+        # with an extra twist: the azimuthal velocity reverses through R=0.
+        bc_x_is_axis = True if bc_x == "axis" else False
+        bc_x_is_reflective = True if bc_x in ("reflective", "axis") else False
         bc_y_is_reflective = True if bc_y == "reflective" else False
+
+        # mesh metric factors: 'geom' on the bare grid, 'geom_work' on the
+        # ghost-extended grid the flux routine operates on
+        geom = get_geometry(self.geometry, self.box_size, self.resolution)
+        geom_work = get_geometry(
+            self.geometry,
+            self.box_size,
+            self.resolution,
+            num_ghost_x=1 if bc_x_is_reflective else 0,
+        )
 
         # Physics flags
         use_hydro = self.params["physics"]["hydro"]
         use_magnetic = self.params["physics"]["magnetic"]
         use_quantum = self.params["physics"]["quantum"]
         use_gravity = self.params["physics"]["gravity"]
+        use_rotation = self.params["physics"]["rotation"]
         use_external_potential = self.params["physics"]["external_potential"]
 
         # constants
@@ -322,11 +390,11 @@ class Simulation:
                         state["vx"],
                         state["vy"],
                         state["P"],
+                        state["vphi"] if use_rotation else None,
                         ax,
                         ay,
                         gamma,
-                        dx,
-                        dy,
+                        geom,
                         dt,
                     )
 
@@ -360,22 +428,27 @@ class Simulation:
                         use_slope_limiting,
                     )
                 else:
-                    state["rho"], state["vx"], state["vy"], state["P"] = (
-                        hydro_euler2d_fluxes(
-                            state["rho"],
-                            state["vx"],
-                            state["vy"],
-                            state["P"],
-                            gamma,
-                            dx,
-                            dy,
-                            dt,
-                            riemann_solver_type,
-                            use_slope_limiting,
-                            bc_x_is_reflective,
-                            bc_y_is_reflective,
-                        )
+                    rho_new, vx_new, vy_new, P_new, vphi_new = hydro_euler2d_fluxes(
+                        state["rho"],
+                        state["vx"],
+                        state["vy"],
+                        state["P"],
+                        state["vphi"] if use_rotation else None,
+                        gamma,
+                        geom_work,
+                        dt,
+                        riemann_solver_type,
+                        use_slope_limiting,
+                        bc_x_is_reflective,
+                        bc_y_is_reflective,
+                        bc_x_is_axis,
                     )
+                    state["rho"] = rho_new
+                    state["vx"] = vx_new
+                    state["vy"] = vy_new
+                    state["P"] = P_new
+                    if use_rotation:
+                        state["vphi"] = vphi_new
 
         def step_fn(carry):
             """

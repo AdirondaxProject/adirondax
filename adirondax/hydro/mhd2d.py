@@ -582,10 +582,10 @@ def hydro_mhd2d_fluxes(
     )
 
     # update solution
-    Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, dx, dy, dt)
-    Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, dx, dy, dt)
-    Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dx, dy, dt)
-    Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dx, dy, dt)
+    Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, dy, dx, dt)
+    Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, dy, dx, dt)
+    Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dy, dx, dt)
+    Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dy, dx, dt)
     bx, by = constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt)
 
     # get Primitive variables

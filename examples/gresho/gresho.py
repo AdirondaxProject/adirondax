@@ -27,7 +27,7 @@ def set_up_simulation():
             "hydro": True,
         },
         "mesh": {
-            "type": "cartesian",
+            "geometry": "cartesian",
             "resolution": [nx, nx],
             "box_size": [1.0, 1.0],
         },

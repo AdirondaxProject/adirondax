@@ -73,7 +73,10 @@ Check out the [`examples/`](https://github.com/AdirondaxProject/adirondax/tree/m
     <img src="examples/orszag_tang/movie.gif" alt="orszag_tang" height="128"/>
   </a>
   <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/rayleigh_taylor">
-    <img src="examples/rayleigh_taylor/movie.gif" alt="orszag_tang" height="128"/>
+    <img src="examples/rayleigh_taylor/movie.gif" alt="rayleigh_taylor" height="128"/>
+  </a>
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/sedov">
+    <img src="examples/sedov/movie.gif" alt="sedov" height="128"/>
   </a>
   <br>
 </p>

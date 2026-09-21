@@ -1,4 +1,3 @@
-from math import gamma
 import jax.numpy as jnp
 
 # Pure functions for 2D hydrodynamics
@@ -92,14 +91,17 @@ def extrapolate_to_face(f, f_dx, f_dy, dx, dy):
     return f_XL, f_XR, f_YL, f_YR
 
 
-def apply_fluxes(F, flux_F_X, flux_F_Y, dx, dy, dt):
+def apply_fluxes(F, flux_F_X, flux_F_Y, area_x, area_y, dt):
     """
     Apply fluxes to conserved variables
+
+    The fluxes are weighted by the area of the face they act on.
     """
+    AX = area_x * flux_F_X
+    AY = area_y * flux_F_Y
+
     F_new = (
-        F
-        + (dt * dy) * (-flux_F_X + jnp.roll(flux_F_X, 1, axis=0))
-        + (dt * dx) * (-flux_F_Y + jnp.roll(flux_F_Y, 1, axis=1))
+        F + dt * (-AX + jnp.roll(AX, 1, axis=0)) + dt * (-AY + jnp.roll(AY, 1, axis=1))
     )
 
     return F_new

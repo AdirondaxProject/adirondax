@@ -19,6 +19,10 @@
     "quantum": { 
       "default": false,
       "description": "switch on for Schrodinger field."
+    },
+    "rotation": { 
+      "default": false,
+      "description": "switch on to evolve the azimuthal velocity (requires 'cylindrical' geometry)."
     }
   },
   "mesh": {
@@ -28,11 +32,11 @@
     },
     "geometry": {
       "default": "cartesian",
-      "description": "options: 'cartesian', 'axisymmetric'."
+      "description": "options: 'cartesian' (x,y), 'cylindrical' (axisymmetric R,z)."
     },
     "box_size": { 
       "default": [1.0, 1.0],
-      "description": "domain box size: (x,y), (x,y,z), (r,z)."
+      "description": "domain box size: (x,y), (x,y,z), (R,z)."
     },
     "resolution": { 
       "default": [32, 32],
@@ -40,7 +44,7 @@
     },
     "boundary_condition": {
       "default": ["periodic", "periodic"],
-      "description": "options: 'periodic', 'reflective' (per dimension)."
+      "description": "options: 'periodic', 'reflective', 'axis' (per dimension). 'axis' places the cylindrical axis at R=0 and a reflecting wall at R=box_size[0]; it is required for, and only valid with, 'cylindrical' geometry."
     }
   },
   "time": {

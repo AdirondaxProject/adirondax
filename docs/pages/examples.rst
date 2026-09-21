@@ -35,6 +35,16 @@ Gallery
          :alt: rayleigh_taylor
          :target: examples.html#rayleigh-taylor
 
+   * - .. figure:: ../../examples/sedov/movie.gif
+         :height: 128px
+         :align: center
+         :alt: sedov
+         :target: examples.html#sedov
+
+     -
+     -
+     -
+
 
 kelvin_helmholtz
 ----------------
@@ -123,3 +133,25 @@ Script:
 .. literalinclude:: ../../examples/rayleigh_taylor/rayleigh_taylor.py
   :language: python
 
+
+
+sedov
+-----
+
+.. figure:: ../../examples/sedov/movie.gif
+  :height: 256px
+  :align: center
+  :alt: sedov
+  :target: examples.html#sedov
+
+  See on GitHub: `examples/sedov <https://github.com/AdirondaxProject/adirondax/tree/main/examples/sedov>`_
+
+README:
+
+.. literalinclude:: ../../examples/sedov/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/sedov/sedov.py
+  :language: python

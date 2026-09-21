@@ -29,7 +29,7 @@ def set_up_simulation():
             "external_potential": True,
         },
         "mesh": {
-            "type": "cartesian",
+            "geometry": "cartesian",
             "resolution": [nx, ny],
             "box_size": [0.5, 1.5],
             "boundary_condition": ["periodic", "reflective"],
