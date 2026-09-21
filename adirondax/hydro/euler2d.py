@@ -4,7 +4,6 @@ from .common2d import get_gradient, slope_limit, extrapolate_to_face, apply_flux
 # Pure functions for 2D Euler hydrodynamics
 
 
-
 def get_conserved(rho, vx, vy, P, vphi, gamma, geom):
     """Calculate the conserved variables from the primitive variables"""
 
