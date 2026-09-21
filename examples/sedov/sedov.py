@@ -2,8 +2,10 @@ import time
 
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import numpy as np
 
 import adirondax as adx
+from adirondax.hydro.geometry import get_geometry
 
 """
 Simulate a Sedov-Taylor blast wave on an axisymmetric cylindrical (R,z) mesh
@@ -14,6 +16,14 @@ treatment of the R=0 axis.
 
 Philip Mocz (2026)
 """
+
+
+# Initial condition: a hot sphere of radius R_BLAST in a uniform ambient medium
+RHO_AMBIENT = 1.0
+P_AMBIENT = 0.1
+P_BLAST = 100.0
+R_BLAST = 0.05
+GAMMA = 5.0 / 3.0
 
 
 def set_up_simulation():
@@ -43,7 +53,7 @@ def set_up_simulation():
             "plot_dynamic_range": 10.0,
         },
         "hydro": {
-            "eos": {"type": "ideal", "gamma": 5.0 / 3.0},
+            "eos": {"type": "ideal", "gamma": GAMMA},
             "slope_limiting": True,
         },
     }
@@ -56,33 +66,108 @@ def set_up_simulation():
     R, z = sim.mesh
     r_sph = jnp.sqrt(R**2 + (z - 0.5) ** 2)
 
-    sim.state["rho"] = jnp.ones(R.shape)
+    sim.state["rho"] = RHO_AMBIENT * jnp.ones(R.shape)
     sim.state["vx"] = jnp.zeros(R.shape)
     sim.state["vy"] = jnp.zeros(R.shape)
-    sim.state["P"] = jnp.where(r_sph < 0.05, 100.0, 0.1)
+    sim.state["P"] = jnp.where(r_sph < R_BLAST, P_BLAST, P_AMBIENT)
+
+    vol = get_geometry("cylindrical", sim.box_size, sim.resolution)["vol"]
+    sim.blast_energy = float(
+        jnp.sum((sim.state["P"] - P_AMBIENT) / (GAMMA - 1.0) * vol)
+    )
 
     return sim
 
 
-def make_plot(sim):
-    # Plot the solution, mirrored about the axis
-    rho = sim.state["rho"]
-    LR = sim.box_size[0]
-    Lz = sim.box_size[1]
+_SELFSIMILAR_CACHE = {}
 
-    rho_full = jnp.concatenate((jnp.flip(rho, axis=0), rho), axis=0)
 
-    plt.figure(figsize=(5, 5), dpi=80)
-    plt.imshow(
-        rho_full.T,
-        cmap="viridis",
-        origin="lower",
-        extent=[-LR, LR, 0.0, Lz],
+def sedov_selfsimilar(gamma, nu=3, lam_min=1.0e-4, n=20001):
+    """
+    Self-similar Sedov-Taylor solution.
+    """
+    key = (gamma, nu, lam_min, n)
+    if key in _SELFSIMILAR_CACHE:
+        return _SELFSIMILAR_CACHE[key]
+
+    alpha = 2.0 / (nu + 2.0)
+
+    # strong-shock (Rankine-Hugoniot) values at lam = 1
+    y = np.array(
+        [
+            2.0 * alpha / (gamma + 1.0),  # V
+            (gamma + 1.0) / (gamma - 1.0),  # G
+            2.0 * alpha**2 / (gamma + 1.0),  # P
+        ]
     )
-    plt.colorbar(label="rho")
-    plt.xlabel("R")
-    plt.ylabel("z")
-    plt.gca().set_aspect("equal")
+
+    def dydx(y):
+        V, G, P = y
+        D = V - alpha
+        dV = (
+            P * (2.0 - 2.0 * V - nu * gamma * V + 2.0 * D) + D * G * V * (V - 1.0)
+        ) / (gamma * P - G * D * D)
+        dP = -G * V * (V - 1.0) - 2.0 * P - G * D * dV
+        dG = -G * (nu * V + dV) / D
+        return np.array([dV, dG, dP])
+
+    x = np.linspace(0.0, np.log(lam_min), n)
+    h = x[1] - x[0]
+    Y = np.empty((n, 3))
+    Y[0] = y
+    for i in range(n - 1):
+        k1 = dydx(y)
+        k2 = dydx(y + 0.5 * h * k1)
+        k3 = dydx(y + 0.5 * h * k2)
+        k4 = dydx(y + h * k3)
+        y = y + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        Y[i + 1] = y
+
+    lam = np.exp(x)[::-1]
+    V, G, P = Y[::-1, 0], Y[::-1, 1], Y[::-1, 2]
+
+    # energy normalization: 1 = S_nu * xi0^(nu+2) * integral
+    S_nu = {1: 2.0, 2: 2.0 * np.pi, 3: 4.0 * np.pi}[nu]
+    integrand = lam ** (nu + 1) * (0.5 * G * V**2 + P / (gamma - 1.0))
+    xi0 = (1.0 / (S_nu * np.trapezoid(integrand, lam))) ** (1.0 / (nu + 2.0))
+
+    _SELFSIMILAR_CACHE[key] = (lam, G, xi0)
+    return lam, G, xi0
+
+
+def sedov_density(r, t, energy, rho0, gamma, nu=3):
+    """Analytic density profile of a Sedov-Taylor blast, and the shock radius"""
+
+    lam, G, xi0 = sedov_selfsimilar(gamma, nu)
+    r_shock = xi0 * (energy * t**2 / rho0) ** (1.0 / (nu + 2.0))
+    x = np.asarray(r) / r_shock
+    rho = np.where(x <= 1.0, rho0 * np.interp(x, lam, G, left=0.0), rho0)
+    return rho, r_shock
+
+
+def make_plot(sim):
+    # Radial density profile
+    R, z = sim.mesh
+    r_sph = np.asarray(jnp.sqrt(R**2 + (z - 0.5) ** 2)).ravel()
+    rho = np.asarray(sim.state["rho"]).ravel()
+    t = float(sim.state["t"])
+
+    r_exact = np.linspace(1.0e-4, 1.6 * float(np.max(r_sph)), 2000)
+    rho_exact, r_shock = sedov_density(r_exact, t, sim.blast_energy, RHO_AMBIENT, GAMMA)
+
+    plt.figure(figsize=(6, 4), dpi=80)
+    plt.scatter(
+        r_sph, rho, s=1.0, color="tab:blue", alpha=0.3, linewidths=0, label="simulation"
+    )
+    plt.plot(r_exact, rho_exact, "k-", lw=1.5, label="Sedov-Taylor")
+    plt.axvline(r_shock, color="tab:red", ls=":", lw=1.0, label="analytic shock")
+
+    plt.xlim(0.0, 2.0 * r_shock)
+    plt.ylim(0.0, 1.1 * (GAMMA + 1.0) / (GAMMA - 1.0))
+    plt.xlabel("r")
+    plt.ylabel("rho")
+    plt.title(f"Sedov-Taylor blast wave at t = {t:.3f}")
+    plt.legend(loc="upper left", framealpha=1.0, markerscale=8)
     plt.tight_layout()
     plt.savefig("output.png", dpi=240)
     plt.show()
