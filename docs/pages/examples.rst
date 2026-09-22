@@ -53,7 +53,11 @@ Gallery
          :alt: sedov
          :target: examples.html#sedov
 
-     -
+     - .. figure:: ../../examples/alfven_wave/movie.gif
+         :height: 128px
+         :align: center
+         :alt: alfven_wave
+         :target: examples.html#alfven-wave
 
 
 kelvin_helmholtz
@@ -143,6 +147,28 @@ Script:
 .. literalinclude:: ../../examples/rayleigh_taylor/rayleigh_taylor.py
   :language: python
 
+
+
+alfven_wave
+-----------
+
+.. figure:: ../../examples/alfven_wave/movie.gif
+  :height: 256px
+  :align: center
+  :alt: alfven_wave
+  :target: examples.html#alfven-wave
+
+  See on GitHub: `examples/alfven_wave <https://github.com/AdirondaxProject/adirondax/tree/main/examples/alfven_wave>`_
+
+README:
+
+.. literalinclude:: ../../examples/alfven_wave/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/alfven_wave/alfven_wave.py
+  :language: python
 
 
 brio_wu

@@ -54,7 +54,7 @@ class Simulation:
 
         if self.params["physics"]["magnetic"]:
             for bc in (bc_x, bc_y):
-                if bc not in ["periodic", "outflow"]:
+                if bc not in ["periodic", "outflow", "axis"]:
                     raise NotImplementedError(
                         f"'{bc}' boundaries are not yet implemented for "
                         "magnetic=True (use 'periodic' or 'outflow')"
@@ -71,7 +71,7 @@ class Simulation:
                 raise ValueError(
                     "cylindrical geometry requires boundary_condition[0] == 'axis'"
                 )
-            for physics in ["magnetic", "gravity", "quantum"]:
+            for physics in ["gravity", "quantum"]:
                 if self.params["physics"][physics]:
                     raise NotImplementedError(
                         f"'{physics}' is not yet implemented for cylindrical geometry."
@@ -82,10 +82,12 @@ class Simulation:
             )
 
         if self.params["physics"]["rotation"]:
-            if not self.is_cylindrical:
-                raise ValueError("'rotation' requires cylindrical geometry")
             if not self.params["physics"]["hydro"]:
                 raise ValueError("'rotation' requires hydro")
+            if not (self.is_cylindrical or self.params["physics"]["magnetic"]):
+                raise ValueError(
+                    "'rotation' requires cylindrical geometry or magnetic=True"
+                )
 
         if self.params["hydro"]["riemann_solver"] not in ["llf", "hlld", "hllc"]:
             raise ValueError("riemann solver does not exist")
@@ -138,7 +140,10 @@ class Simulation:
             self.state["vy"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["P"] = jnp.zeros(self.resolution) + jnp.nan
         if self.params["physics"]["rotation"]:
-            self.state["vphi"] = jnp.zeros(self.resolution) + jnp.nan
+            v_out, b_out = self.out_of_plane_keys
+            self.state[v_out] = jnp.zeros(self.resolution) + jnp.nan
+            if self.params["physics"]["magnetic"]:
+                self.state[b_out] = jnp.zeros(self.resolution) + jnp.nan
         if self.params["physics"]["magnetic"]:
             self.state["bx"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["by"] = jnp.zeros(self.resolution) + jnp.nan
@@ -180,6 +185,13 @@ class Simulation:
         Return whether the mesh is an axisymmetric cylindrical (R,z) mesh
         """
         return self.geometry == "cylindrical"
+
+    @property
+    def out_of_plane_keys(self):
+        """
+        Return the state keys of the out-of-plane velocity and magnetic field
+        """
+        return ("vphi", "bphi") if self.is_cylindrical else ("vz", "bz")
 
     @property
     def dim(self):
@@ -313,6 +325,8 @@ class Simulation:
         use_quantum = self.params["physics"]["quantum"]
         use_gravity = self.params["physics"]["gravity"]
         use_rotation = self.params["physics"]["rotation"]
+        v_out, b_out = self.out_of_plane_keys
+        use_mhd_out = use_rotation and use_magnetic
         use_external_potential = self.params["physics"]["external_potential"]
 
         # constants
@@ -358,6 +372,8 @@ class Simulation:
                         gamma,
                         dx,
                         dy,
+                        state[v_out] if use_mhd_out else None,
+                        state[b_out] if use_mhd_out else None,
                     )
                 else:
                     dt_hydro = hydro_euler2d_timestep(
@@ -407,7 +423,7 @@ class Simulation:
                         state["vx"],
                         state["vy"],
                         state["P"],
-                        state["vphi"] if use_rotation else None,
+                        state[v_out] if use_rotation else None,
                         ax,
                         ay,
                         gamma,
@@ -424,12 +440,14 @@ class Simulation:
             if use_hydro:
                 if use_magnetic:
                     (
-                        state["rho"],
-                        state["vx"],
-                        state["vy"],
-                        state["P"],
-                        state["bx"],
-                        state["by"],
+                        rho_new,
+                        vx_new,
+                        vy_new,
+                        P_new,
+                        bx_new,
+                        by_new,
+                        vout_new,
+                        bout_new,
                     ) = hydro_mhd2d_fluxes(
                         state["rho"],
                         state["vx"],
@@ -438,21 +456,32 @@ class Simulation:
                         state["bx"],
                         state["by"],
                         gamma,
-                        dx,
-                        dy,
+                        geom_work,
                         dt,
                         riemann_solver_type,
                         use_slope_limiting,
                         bc_x,
                         bc_y,
+                        state[v_out] if use_mhd_out else None,
+                        state[b_out] if use_mhd_out else None,
+                        geom,
                     )
+                    state["rho"] = rho_new
+                    state["vx"] = vx_new
+                    state["vy"] = vy_new
+                    state["P"] = P_new
+                    state["bx"] = bx_new
+                    state["by"] = by_new
+                    if use_mhd_out:
+                        state[v_out] = vout_new
+                        state[b_out] = bout_new
                 else:
                     rho_new, vx_new, vy_new, P_new, vphi_new = hydro_euler2d_fluxes(
                         state["rho"],
                         state["vx"],
                         state["vy"],
                         state["P"],
-                        state["vphi"] if use_rotation else None,
+                        state[v_out] if use_rotation else None,
                         gamma,
                         geom_work,
                         dt,
@@ -466,7 +495,7 @@ class Simulation:
                     state["vy"] = vy_new
                     state["P"] = P_new
                     if use_rotation:
-                        state["vphi"] = vphi_new
+                        state[v_out] = vphi_new
 
         def step_fn(carry):
             """

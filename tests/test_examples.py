@@ -131,3 +131,32 @@ def test_sod():
     assert jnp.mean(sim.state["rho"]) == pytest.approx(0.5624968, rel=rel_tol)
     assert jnp.mean(jnp.abs(sim.state["vx"])) == pytest.approx(0.4433709, rel=rel_tol)
     assert jnp.mean(sim.state["P"]) == pytest.approx(0.5215686, rel=rel_tol)
+
+
+def test_alfven_wave():
+    sim = run("alfven_wave")
+    assert sim.resolution == [8, 32]
+    assert sim.state["t"] > 0.0
+
+    R, z = sim.mesh
+
+    # after one full period the wave is back where it started
+    exact = 0.01 * jnp.sin(2.0 * jnp.pi * z) * R
+    assert jnp.mean(jnp.abs(sim.state["bphi"] - exact)) < 5.0e-4
+
+    # the Alfven relation v_phi = -B_phi / sqrt(rho) is maintained
+    assert jnp.max(jnp.abs(sim.state["vphi"] + sim.state["bphi"])) < 1.0e-4
+
+    # the hoop stress and the centrifugal force cancel, so the plasma stays put
+    # radially; what is left is the O(amplitude^2) magnetic pressure imbalance
+    assert jnp.max(jnp.abs(sim.state["vx"])) < 5.0e-3
+
+    # the poloidal field is untouched
+    assert jnp.max(jnp.abs(sim.state["bx"])) < 1.0e-4
+    assert jnp.max(jnp.abs(sim.state["by"] - 1.0)) < 5.0e-3
+
+    # constrained transport keeps the field divergence-free
+    dx = sim.box_size[0] / sim.resolution[0]
+    dy = sim.box_size[1] / sim.resolution[1]
+    div_B = get_div(sim.state["bx"], sim.state["by"], dx, dy)
+    assert jnp.max(jnp.abs(div_B)) * dx < 1.0e-6

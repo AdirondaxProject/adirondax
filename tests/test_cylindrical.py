@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 import adirondax as adx
+from adirondax.hydro.common2d import get_avg
 
 
 def make_params(nR=32, nz=32, LR=1.0, Lz=1.0, nt=20, t_stop=0.1, rotation=False):
@@ -327,3 +328,84 @@ def test_hllc_preserves_cylindrical_well_balancedness():
     assert jnp.max(jnp.abs(sim.state["rho"] - 1.0)) < 1e-12
     assert jnp.max(jnp.abs(sim.state["P"] - 1.0)) < 1e-12
     assert jnp.max(jnp.abs(sim.state["vx"])) < 1e-12
+
+
+# --------------------------------------------------------------------------
+# 2.5D MHD: out-of-plane velocity and magnetic field
+# --------------------------------------------------------------------------
+def _mhd25_params(nx, nt, t_end, rotation=True):
+    return {
+        "physics": {"hydro": True, "magnetic": True, "rotation": rotation},
+        "mesh": {
+            "geometry": "cartesian",
+            "resolution": [nx, 4],
+            "box_size": [1.0, 4.0 / nx],
+            "boundary_condition": ["periodic", "periodic"],
+        },
+        "time": {"span": t_end, "num_timesteps": nt},
+        "hydro": {
+            "eos": {"gamma": 5.0 / 3.0},
+            "riemann_solver": "hlld",
+            "slope_limiting": True,
+        },
+    }
+
+
+def test_alfven_wave_is_second_order():
+    amp = 0.01
+
+    def run(nx):
+        sim = adx.Simulation(_mhd25_params(nx, 20 * nx, 1.0))
+        sim.state["t"] = jnp.array(0.0)
+        X, _ = sim.mesh
+        Bz0 = amp * jnp.sin(2.0 * jnp.pi * X)
+        sim.state["rho"] = jnp.ones_like(X)
+        sim.state["vx"] = jnp.zeros_like(X)
+        sim.state["vy"] = jnp.zeros_like(X)
+        sim.state["bx"] = jnp.ones_like(X)
+        sim.state["by"] = jnp.zeros_like(X)
+        sim.state["vz"] = -Bz0
+        sim.state["bz"] = Bz0
+        sim.state["P"] = 1.0 + 0.5 * (1.0 + Bz0**2)
+        sim.run()
+        return float(jnp.mean(jnp.abs(sim.state["bz"] - Bz0))), sim
+
+    err_coarse, _ = run(32)
+    err_fine, sim = run(128)
+
+    # between 32 and 128 cells the error must fall by better than first order
+    order = np.log2(err_coarse / err_fine) / 2.0
+    assert order > 1.5, f"convergence order {order}"
+    assert err_fine < 1e-4
+
+    # the wave stays a pure Alfven wave: vz = -Bz / sqrt(rho)
+    assert jnp.max(jnp.abs(sim.state["vz"] + sim.state["bz"])) < 1e-5
+
+
+def test_two_and_a_half_d_reduces_to_2d():
+    """Switching on the third components with zero data must change nothing"""
+
+    def run(rotation):
+        sim = adx.Simulation(_mhd25_params(64, 200, 0.1, rotation=rotation))
+        sim.state["t"] = jnp.array(0.0)
+        X, _ = sim.mesh
+        sim.state["rho"] = 1.0 + 0.5 * jnp.sin(2.0 * jnp.pi * X)
+        sim.state["vx"] = 0.1 * jnp.cos(2.0 * jnp.pi * X)
+        sim.state["vy"] = jnp.zeros_like(X)
+        sim.state["bx"] = jnp.ones_like(X)
+        sim.state["by"] = 0.3 * jnp.sin(2.0 * jnp.pi * X)
+        if rotation:
+            sim.state["vz"] = jnp.zeros_like(X)
+            sim.state["bz"] = jnp.zeros_like(X)
+        Bx, By = get_avg(sim.state["bx"], sim.state["by"])
+        sim.state["P"] = 1.0 + 0.5 * (Bx**2 + By**2)
+        sim.run()
+        return sim
+
+    a = run(False)
+    b = run(True)
+    for key in ["rho", "vx", "vy", "P", "bx", "by"]:
+        np.testing.assert_allclose(a.state[key], b.state[key], rtol=1e-12, atol=1e-12)
+    # the out-of-plane components stay identically zero
+    assert jnp.max(jnp.abs(b.state["vz"])) == 0.0
+    assert jnp.max(jnp.abs(b.state["bz"])) == 0.0

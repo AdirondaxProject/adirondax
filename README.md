@@ -78,6 +78,9 @@ Check out the [`examples/`](https://github.com/AdirondaxProject/adirondax/tree/m
   <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/sedov">
     <img src="examples/sedov/movie.gif" alt="sedov" height="128"/>
   </a>
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/alfven_wave">
+    <img src="examples/alfven_wave/movie.gif" alt="alfven_wave" height="128"/>
+  </a>
   <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/brio_wu">
     <img src="examples/brio_wu/movie.gif" alt="brio_wu" height="128"/>
   </a>
