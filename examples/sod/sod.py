@@ -1,3 +1,4 @@
+import argparse
 import time
 
 import jax.numpy as jnp
@@ -18,11 +19,11 @@ RHO_L, VX_L, P_L = 1.0, 0.0, 1.0
 RHO_R, VX_R, P_R = 0.125, 0.0, 0.1
 
 
-def set_up_simulation():
+def set_up_simulation(resolution_multiplier=4, save=True):
     # Define the parameters for the simulation
-    nx = 400
-    ny = 40
-    nt = 2000
+    nx = 100 * resolution_multiplier
+    ny = 10 * resolution_multiplier
+    nt = 500 * resolution_multiplier
     t_stop = 0.2
 
     params = {
@@ -41,7 +42,7 @@ def set_up_simulation():
         },
         "output": {
             "num_checkpoints": 100,
-            "save": True,
+            "save": save,
             "plot_dynamic_range": 10.0,
         },
         "hydro": {
@@ -212,7 +213,23 @@ def make_plot(sim):
 
 
 def main():
-    sim = set_up_simulation()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--res", type=int, default=4, help="resolution multiplier")
+    parser.add_argument(
+        "--save",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="write checkpoints",
+    )
+    parser.add_argument(
+        "--plot",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="make the summary plot",
+    )
+    args = parser.parse_args()
+
+    sim = set_up_simulation(args.res, args.save)
 
     # Evolve the system
     t0 = time.time()
@@ -220,7 +237,10 @@ def main():
     print("Run time (s): ", time.time() - t0)
     print("Steps taken:", sim.steps_taken)
 
-    make_plot(sim)
+    if args.plot:
+        make_plot(sim)
+
+    return sim
 
 
 if __name__ == "__main__":

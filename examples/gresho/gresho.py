@@ -1,3 +1,4 @@
+import argparse
 import time
 
 import jax.numpy as jnp
@@ -12,9 +13,9 @@ Philip Mocz (2025)
 """
 
 
-def set_up_simulation():
+def set_up_simulation(resolution_multiplier=4, save=False):
     # Define the parameters for the simulation
-    nx = 128
+    nx = 32 * resolution_multiplier
     nt = -1
     t_stop = 3.0
 
@@ -33,7 +34,7 @@ def set_up_simulation():
         },
         "output": {
             "num_checkpoints": 100,
-            "save": False,
+            "save": save,
             "plot_dynamic_range": 2.0,
         },
         "hydro": {
@@ -91,7 +92,23 @@ def make_plot(sim):
 
 
 def main():
-    sim = set_up_simulation()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--res", type=int, default=4, help="resolution multiplier")
+    parser.add_argument(
+        "--save",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="write checkpoints",
+    )
+    parser.add_argument(
+        "--plot",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="make the summary plot",
+    )
+    args = parser.parse_args()
+
+    sim = set_up_simulation(args.res, args.save)
 
     # Evolve the system
     t0 = time.time()
@@ -99,7 +116,10 @@ def main():
     print("Run time (s): ", time.time() - t0)
     print("Steps taken:", sim.steps_taken)
 
-    make_plot(sim)
+    if args.plot:
+        make_plot(sim)
+
+    return sim
 
 
 if __name__ == "__main__":
