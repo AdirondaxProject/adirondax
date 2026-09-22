@@ -66,10 +66,16 @@ class Simulation:
             )
 
         if self.is_cylindrical:
-            # R in [0, box_size[0]], z in [0, box_size[1]]
-            if bc_x != "axis":
+            if self.origin[0] < 0.0:
+                raise ValueError("cylindrical geometry requires origin[0] >= 0")
+            if self.origin[0] == 0.0 and bc_x != "axis":
                 raise ValueError(
-                    "cylindrical geometry requires boundary_condition[0] == 'axis'"
+                    "a cylindrical domain reaching R=0 requires "
+                    "boundary_condition[0] == 'axis'"
+                )
+            if self.origin[0] > 0.0 and bc_x == "axis":
+                raise ValueError(
+                    "the 'axis' boundary condition requires origin[0] == 0"
                 )
             for physics in ["gravity", "quantum"]:
                 if self.params["physics"][physics]:
@@ -173,6 +179,13 @@ class Simulation:
         return self.params["mesh"]["box_size"]
 
     @property
+    def origin(self):
+        """
+        Return the lower corner of the simulation domain
+        """
+        return self.params["mesh"]["origin"]
+
+    @property
     def geometry(self):
         """
         Return the geometry of the simulation mesh
@@ -228,8 +241,9 @@ class Simulation:
         ny = self.resolution[1]
         dx = Lx / nx
         dy = Ly / ny
-        x_lin = jnp.linspace(0.5 * dx, Lx - 0.5 * dx, nx)
-        y_lin = jnp.linspace(0.5 * dy, Ly - 0.5 * dy, ny)
+        x0, y0 = self.origin[0], self.origin[1]
+        x_lin = jnp.linspace(x0 + 0.5 * dx, x0 + Lx - 0.5 * dx, nx)
+        y_lin = jnp.linspace(y0 + 0.5 * dy, y0 + Ly - 0.5 * dy, ny)
         xx, yy = jnp.meshgrid(x_lin, y_lin, indexing="ij")
         return xx, yy
 
@@ -311,12 +325,14 @@ class Simulation:
 
         # mesh metric factors: 'geom' on the bare grid, 'geom_work' on the
         # ghost-extended grid the flux routine operates on
-        geom = get_geometry(self.geometry, self.box_size, self.resolution)
+        r_min = self.origin[0]
+        geom = get_geometry(self.geometry, self.box_size, self.resolution, r_min=r_min)
         geom_work = get_geometry(
             self.geometry,
             self.box_size,
             self.resolution,
             num_ghost_x=1 if x_has_ghosts else 0,
+            r_min=r_min,
         )
 
         # Physics flags

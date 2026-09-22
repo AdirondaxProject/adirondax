@@ -459,12 +459,20 @@ def get_flux_hlld(
     # Step 7
     # Compute flux
 
+    # Which of the six regions the interface sits in. These have to be built
+    # as a mutually exclusive chain, not as independent conditions: when the
+    # normal field vanishes the Alfven speeds collapse onto the contact
+    # (spd2 = spd3 = spd4), and independent conditions then select two regions
+    # at once and add the flux twice.
     in_L = spd1 >= 0
-    in_R = spd5 <= 0
-    in_Lst = (spd1 < 0) & (spd2 >= 0)
-    in_Ldst = (spd2 < 0) & (spd3 >= 0)
-    in_Rdst = (spd3 < 0) & (spd4 > 0)
-    in_Rst = (spd4 <= 0) & (spd5 > 0)
+    in_R = (~in_L) & (spd5 <= 0)
+    rest = (~in_L) & (~in_R)
+    in_Lst = rest & (spd2 >= 0)
+    rest = rest & (~in_Lst)
+    in_Ldst = rest & (spd3 >= 0)
+    rest = rest & (~in_Ldst)
+    in_Rdst = rest & (spd4 > 0)
+    in_Rst = rest & (~in_Rdst)
     tmpl = spd2 - spd1
     tmpr = spd4 - spd5
 

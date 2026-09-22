@@ -409,3 +409,66 @@ def test_two_and_a_half_d_reduces_to_2d():
     # the out-of-plane components stay identically zero
     assert jnp.max(jnp.abs(b.state["vz"])) == 0.0
     assert jnp.max(jnp.abs(b.state["bz"])) == 0.0
+
+
+def test_hlld_is_consistent_when_the_normal_field_vanishes():
+    from adirondax.hydro.mhd2d import get_flux
+
+    one = jnp.ones((4,))
+    P_tot = 1.125
+    for B_n, B_t in [(0.0, 0.0), (0.0, 0.5), (0.5, 0.0), (0.5, 0.5)]:
+        flux = get_flux(
+            one,
+            one,
+            0 * one,
+            0 * one,
+            0 * one,
+            0 * one,
+            P_tot * one,
+            P_tot * one,
+            B_n * one,
+            B_n * one,
+            B_t * one,
+            B_t * one,
+            None,
+            None,
+            None,
+            None,
+            5.0 / 3.0,
+            "hlld",
+        )
+        assert flux[1] == pytest.approx(P_tot - B_n**2, rel=1e-12)
+        assert jnp.max(jnp.abs(flux[0])) < 1e-12  # no mass flux at rest
+
+
+def test_magnetised_annulus_is_well_balanced():
+    params = {
+        "physics": {"hydro": True, "magnetic": True, "rotation": True},
+        "mesh": {
+            "geometry": "cylindrical",
+            "resolution": [48, 16],
+            "box_size": [0.12, 0.6],
+            "origin": [0.08, 0.0],
+            "boundary_condition": ["outflow", "periodic"],
+        },
+        "time": {"span": 0.05, "num_timesteps": 100},
+        "hydro": {"eos": {"gamma": 5.0 / 3.0}, "riemann_solver": "hlld"},
+    }
+    sim = adx.Simulation(params)
+    sim.state["t"] = jnp.array(0.0)
+    R, _ = sim.mesh
+    assert float(jnp.min(R)) > 0.08  # the domain really is an annulus
+
+    sim.state["rho"] = jnp.ones_like(R)
+    sim.state["vx"] = jnp.zeros_like(R)
+    sim.state["vy"] = jnp.zeros_like(R)
+    sim.state["bx"] = jnp.zeros_like(R)
+    sim.state["by"] = 0.5 * jnp.ones_like(R)
+    sim.state["vphi"] = jnp.zeros_like(R)
+    sim.state["bphi"] = jnp.zeros_like(R)
+    sim.state["P"] = jnp.ones_like(R) + 0.5 * 0.25
+    sim.run()
+
+    assert jnp.max(jnp.abs(sim.state["rho"] - 1.0)) < 1e-9
+    assert jnp.max(jnp.abs(sim.state["vx"])) < 1e-9
+    assert jnp.max(jnp.abs(sim.state["by"] - 0.5)) < 1e-9

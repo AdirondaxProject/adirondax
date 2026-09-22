@@ -34,6 +34,10 @@
       "default": "cartesian",
       "description": "options: 'cartesian' (x,y), 'cylindrical' (axisymmetric R,z)."
     },
+    "origin": {
+      "default": [0.0, 0.0],
+      "description": "lower corner of the domain. For 'cylindrical' geometry a non-zero origin[0] gives an annulus, whose inner boundary is a wall rather than the symmetry axis."
+    },
     "box_size": { 
       "default": [1.0, 1.0],
       "description": "domain box size: (x,y), (x,y,z), (R,z)."

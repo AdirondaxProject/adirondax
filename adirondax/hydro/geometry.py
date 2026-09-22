@@ -3,7 +3,7 @@ import jax.numpy as jnp
 # Pure functions for 2D mesh geometry (finite-volume metric factors)
 
 
-def get_geometry(geometry, box_size, resolution, num_ghost_x=0):
+def get_geometry(geometry, box_size, resolution, num_ghost_x=0, r_min=0.0):
     """
     Build the finite-volume metric factors for a 2D mesh.
 
@@ -17,10 +17,9 @@ def get_geometry(geometry, box_size, resolution, num_ghost_x=0):
     resolution: list
       Number of cells per dimension.
     num_ghost_x: int
-      Number of ghost cells added on each side of the x/R axis. The factors
-      are mirrored across R=0, so the ghost cell below the axis gets the
-      volume of its interior partner and the face lying exactly on the axis
-      gets zero area.
+      Number of ghost cells added on each side of the x/R axis.
+    r_min: float
+      Inner radius of the domain.
 
     Returns
     -------
@@ -61,9 +60,11 @@ def get_geometry(geometry, box_size, resolution, num_ghost_x=0):
     # mirrors the metric across the axis, so a ghost cell spanning [-dx, 0]
     # gets the same volume as the first interior cell.
     g = num_ghost_x
-    edges = dx * (jnp.arange(nx + 1 + 2 * g) - g)
-    Rm = jnp.abs(edges[:-1])  # |R_{i-1/2}|
-    Rp = jnp.abs(edges[1:])  # |R_{i+1/2}|
+    edges = r_min + dx * (jnp.arange(nx + 1 + 2 * g) - g)
+    if r_min == 0.0:
+        edges = jnp.abs(edges)
+    Rm = edges[:-1]  # R_{i-1/2}
+    Rp = edges[1:]  # R_{i+1/2}
 
     dR2 = jnp.abs(Rp**2 - Rm**2)
     dR3 = jnp.abs(Rp**3 - Rm**3)
