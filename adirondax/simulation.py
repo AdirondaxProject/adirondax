@@ -342,9 +342,9 @@ class Simulation:
                 path = ocp.test_utils.erase_and_create_empty(checkpoint_dir)
 
         # Build the carry:
-        carry = (state, k_sq)
+        carry = (state, k_sq, jnp.asarray(t_span))
 
-        def _get_timestep(state):
+        def _get_timestep(state, t_target):
             dt = jnp.inf
             if use_hydro:
                 if use_magnetic:
@@ -373,7 +373,7 @@ class Simulation:
             if use_quantum:
                 dt_quantum = quantum_timestep(m_per_hbar, dx, dy)
                 dt = jnp.minimum(dt, dt_quantum)
-            dt = jnp.minimum(dt, t_span - state["t"])
+            dt = jnp.minimum(dt, t_target - state["t"])
             return dt
 
         def _kick(state, k_sq, dt):
@@ -472,12 +472,12 @@ class Simulation:
             """
             Pure step function: advances state by one timestep.
             """
-            state, k_sq = carry
+            state, k_sq, t_target = carry
 
             # Get the timestep
             dt = dt_ref
             if use_adaptive_timesteps:
-                dt = _get_timestep(state)
+                dt = _get_timestep(state, t_target)
 
             # kick-drift-kick
             _kick(state, k_sq, 0.5 * dt)
@@ -490,25 +490,30 @@ class Simulation:
             # Update diagnostics
             state["steps_taken"] = state["steps_taken"] + 1
 
-            return (state, k_sq)
+            return (state, k_sq, t_target)
 
         # Run the entire loop as a single JIT-compiled function
         def run_loop(carry):
             if use_adaptive_timesteps:
+
+                def cond_fn(carry):
+                    state, _, t_target = carry
+                    return state["t"] < t_target * (1.0 - 1e-10)
+
+                def run_until(carry, t_target):
+                    state, k_sq, _ = carry
+                    return jax.lax.while_loop(cond_fn, step_fn, (state, k_sq, t_target))
+
                 if save:
-                    raise NotImplementedError("implement me.")
+                    for i in range(1, num_checkpoints + 1):
+                        t_target = jnp.asarray(t_span * i / num_checkpoints)
+                        carry = run_until(carry, t_target)
+                        state, _, _ = carry
+                        jax.block_until_ready(state)
+                        # save state
+                        plot_sim(state, checkpoint_dir, i, self.params)
                 else:
-                    # def cond_fn(carry):
-                    #    state, _ = carry
-                    #    return state["t"] < t_span * (1.0 - 1e-10)
-
-                    # carry = jax.lax.while_loop(cond_fn, step_fn, carry)
-
-                    # do a simple while loop
-                    state, _ = carry
-                    while state["t"] < t_span * (1.0 - 1e-10):
-                        carry = step_fn(carry)
-                        state, _ = carry
+                    carry = run_until(carry, carry[2])
             else:
 
                 def step_fn_stacked(carry, _):
@@ -521,7 +526,7 @@ class Simulation:
                         carry, _ = jax.lax.scan(
                             step_fn_stacked, carry, xs=None, length=nt_sub
                         )
-                        state, _ = carry
+                        state, _, _ = carry
                         jax.block_until_ready(state)
                         # save state
                         plot_sim(state, checkpoint_dir, i, self.params)
@@ -538,7 +543,7 @@ class Simulation:
             plot_sim(state, checkpoint_dir, 0, self.params)
 
         # Simulation Main Loop
-        state, _ = run_loop(carry)
+        state, _, _ = run_loop(carry)
 
         return state
 

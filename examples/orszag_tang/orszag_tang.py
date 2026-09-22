@@ -1,6 +1,7 @@
 import argparse
 import time
 
+import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
@@ -8,7 +9,7 @@ import adirondax as adx
 from adirondax.hydro.common2d import get_avg, get_curl
 
 # switch on for double precision
-# jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 
 """
 Simulate the Orszag-Tang vortex
