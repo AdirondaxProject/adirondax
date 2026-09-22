@@ -1,7 +1,3 @@
-import contextlib
-import glob
-import io
-import os
 import time
 
 import jax.numpy as jnp
@@ -174,9 +170,9 @@ def exact_riemann(x, t, gamma=GAMMA, x0=X_DIAPHRAGM):
     return rho, vx, pr, p_star, u_star
 
 
-def draw_profiles(sim, axes):
+def make_plot(sim):
     """
-    Draw rho, vx and P against x on the three given axes.
+    Plot rho, vx and P against x.
     """
     X, _ = sim.mesh
     x = np.asarray(X).ravel()
@@ -186,12 +182,13 @@ def draw_profiles(sim, axes):
     rho_e, vx_e, p_e, _, _ = exact_riemann(x_exact, t)
 
     fields = [
-        ("rho", np.asarray(sim.state["rho"]).ravel(), rho_e, (0.0, 1.09)),
-        ("vx", np.asarray(sim.state["vx"]).ravel(), vx_e, (-0.05, 1.05)),
-        ("P", np.asarray(sim.state["P"]).ravel(), p_e, (0.0, 1.09)),
+        ("rho", np.asarray(sim.state["rho"]).ravel(), rho_e),
+        ("vx", np.asarray(sim.state["vx"]).ravel(), vx_e),
+        ("P", np.asarray(sim.state["P"]).ravel(), p_e),
     ]
 
-    for ax, (name, sim_vals, exact_vals, ylim) in zip(axes, fields):
+    _, axes = plt.subplots(3, 1, figsize=(6, 8), dpi=80, sharex=True)
+    for ax, (name, sim_vals, exact_vals) in zip(axes, fields):
         ax.scatter(
             x,
             sim_vals,
@@ -203,59 +200,15 @@ def draw_profiles(sim, axes):
         )
         ax.plot(x_exact, exact_vals, "k-", lw=1.2, label="exact")
         ax.set_ylabel(name)
-        ax.set_ylim(*ylim)
         ax.grid(alpha=0.2)
 
     axes[0].legend(loc="lower left", framealpha=1.0, markerscale=8)
-    axes[0].set_title(f"Sod shock tube at t = {t:.3f}")
+    axes[0].set_title(f"Sod shock tube at t = {t:.2f}")
     axes[-1].set_xlabel("x")
     axes[-1].set_xlim(0.0, 1.0)
-
-
-def make_plot(sim, filename="output.png", show=True):
-    _, axes = plt.subplots(3, 1, figsize=(6, 8), dpi=80, sharex=True)
-    draw_profiles(sim, axes)
     plt.tight_layout()
-    plt.savefig(filename, dpi=240 if show else 80)
-    if show:
-        plt.show()
-    plt.close()
-
-
-def run_simulation(sim):
-    """
-    Evolve the simulation and create plots of the profile
-    """
-    if not sim.params["output"]["save"]:
-        sim.run()
-        return
-
-    checkpoint_dir = sim.params["output"]["path"]
-    num_checkpoints = sim.params["output"]["num_checkpoints"]
-    os.makedirs(checkpoint_dir, exist_ok=True)
-    for stale in glob.glob(os.path.join(checkpoint_dir, "*.png")):
-        os.remove(stale)
-
-    nt_total = sim.params["time"]["num_timesteps"]
-    t_total = sim.params["time"]["span"]
-
-    # step forward in equal chunks, with the library's own checkpointing off
-    sim.params["output"]["save"] = False
-    sim.params["time"]["num_timesteps"] = nt_total // num_checkpoints
-    sim.params["time"]["span"] = t_total / num_checkpoints
-
-    make_plot(sim, os.path.join(checkpoint_dir, "sod000.png"), show=False)
-    steps = 0
-    for i in range(1, num_checkpoints + 1):
-        with contextlib.redirect_stdout(io.StringIO()):
-            sim.run()
-        steps += int(sim.steps_taken)
-        make_plot(sim, os.path.join(checkpoint_dir, f"sod{i:03d}.png"), show=False)
-
-    sim.params["output"]["save"] = True
-    sim.params["time"]["num_timesteps"] = nt_total
-    sim.params["time"]["span"] = t_total
-    sim.state["steps_taken"] = steps
+    plt.savefig("output.png", dpi=240)
+    plt.show()
 
 
 def main():
@@ -263,7 +216,7 @@ def main():
 
     # Evolve the system
     t0 = time.time()
-    run_simulation(sim)
+    sim.run()
     print("Run time (s): ", time.time() - t0)
     print("Steps taken:", sim.steps_taken)
 
