@@ -110,3 +110,36 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, area_x, area_y, dt):
     )
 
     return F_new
+
+
+def pad_edge(f, axis):
+    """
+    Add one ghost cell on each side of the given axis, holding a copy of the
+    edge value.
+    """
+
+    if axis == 0:
+        return jnp.concatenate((f[0:1, :], f, f[-1:, :]), axis=0)
+    else:
+        return jnp.concatenate((f[:, 0:1], f, f[:, -1:]), axis=1)
+
+
+def strip_ghosts(f, axis):
+    """Drop the ghost cell on each side of the given axis"""
+
+    return f[1:-1, :] if axis == 0 else f[:, 1:-1]
+
+
+def zero_ghost_gradients(f_d, axis):
+    """
+    Flatten the gradient in the ghost cells.
+    """
+
+    if axis == 0:
+        f_d = f_d.at[0, :].set(0.0)
+        f_d = f_d.at[-1, :].set(0.0)
+    else:
+        f_d = f_d.at[:, 0].set(0.0)
+        f_d = f_d.at[:, -1].set(0.0)
+
+    return f_d

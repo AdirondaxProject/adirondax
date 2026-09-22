@@ -35,7 +35,13 @@ Gallery
          :alt: rayleigh_taylor
          :target: examples.html#rayleigh-taylor
 
-   * - .. figure:: ../../examples/sod/movie.gif
+   * - .. figure:: ../../examples/brio_wu/movie.gif
+         :height: 128px
+         :align: center
+         :alt: brio_wu
+         :target: examples.html#brio-wu
+
+     - .. figure:: ../../examples/sod/movie.gif
          :height: 128px
          :align: center
          :alt: sod
@@ -47,7 +53,6 @@ Gallery
          :alt: sedov
          :target: examples.html#sedov
 
-     -
      -
 
 
@@ -138,6 +143,28 @@ Script:
 .. literalinclude:: ../../examples/rayleigh_taylor/rayleigh_taylor.py
   :language: python
 
+
+
+brio_wu
+-------
+
+.. figure:: ../../examples/brio_wu/movie.gif
+  :height: 256px
+  :align: center
+  :alt: brio_wu
+  :target: examples.html#brio-wu
+
+  See on GitHub: `examples/brio_wu <https://github.com/AdirondaxProject/adirondax/tree/main/examples/brio_wu>`_
+
+README:
+
+.. literalinclude:: ../../examples/brio_wu/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/brio_wu/brio_wu.py
+  :language: python
 
 
 sod

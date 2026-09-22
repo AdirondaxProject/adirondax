@@ -33,6 +33,35 @@ def test_gresho():
     assert jnp.mean(sim.state["P"]) == pytest.approx(5.737929, rel=rel_tol)
 
 
+def test_brio_wu():
+    sim = run("brio_wu")
+    assert sim.resolution == [100, 10]
+    assert sim.state["t"] > 0.0
+
+    # constrained transport keeps the field divergence-free to round-off
+    dx = sim.box_size[0] / sim.resolution[0]
+    dy = sim.box_size[1] / sim.resolution[1]
+    div_B = get_div(sim.state["bx"], sim.state["by"], dx, dy)
+    b_rms = jnp.sqrt(jnp.mean(sim.state["bx"] ** 2 + sim.state["by"] ** 2))
+    assert jnp.max(jnp.abs(div_B)) * dx / b_rms < 1.0e-4
+
+    # the outflow boundaries must carry the uniform normal field through
+    # untouched: a reflecting wall would drive Bx to zero there
+    assert jnp.max(jnp.abs(sim.state["bx"] - 0.75)) < 1.0e-4
+
+    # the problem is one-dimensional and must stay that way
+    assert jnp.max(jnp.ptp(sim.state["rho"], axis=1)) < 1.0e-4
+
+    # no new extremum in rho, and the far states are still untouched
+    assert jnp.max(sim.state["rho"]) == pytest.approx(1.0, rel=rel_tol)
+    assert sim.state["rho"][-1, 0] == pytest.approx(0.125, rel=rel_tol)
+
+    assert jnp.mean(sim.state["rho"]) == pytest.approx(0.5624992, rel=rel_tol)
+    assert jnp.mean(jnp.abs(sim.state["vx"])) == pytest.approx(0.209511, rel=rel_tol)
+    assert jnp.min(sim.state["vy"]) == pytest.approx(-1.620257, rel=rel_tol)
+    assert jnp.mean(jnp.abs(sim.state["by"])) == pytest.approx(0.8496271, rel=rel_tol)
+
+
 def test_kelvin_helmholtz():
     sim = run("kelvin_helmholtz")
     assert sim.resolution == [32, 32]

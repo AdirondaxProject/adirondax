@@ -6,7 +6,10 @@ from .common2d import (
     get_avg,
     get_curl,
     get_gradient,
+    pad_edge,
     slope_limit,
+    strip_ghosts,
+    zero_ghost_gradients,
 )
 
 # Pure functions for 2D magnetohydrodynamics
@@ -482,9 +485,36 @@ def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx, dy):
 
 
 def hydro_mhd2d_fluxes(
-    rho, vx, vy, P, bx, by, gamma, dx, dy, dt, riemann_solver_type, use_slope_limiting
+    rho,
+    vx,
+    vy,
+    P,
+    bx,
+    by,
+    gamma,
+    dx,
+    dy,
+    dt,
+    riemann_solver_type,
+    use_slope_limiting,
+    bc_x="periodic",
+    bc_y="periodic",
 ):
-    """Take a simulation timestep"""
+    """
+    Take a simulation timestep
+    """
+
+    x_has_ghosts = bc_x != "periodic"
+    y_has_ghosts = bc_y != "periodic"
+
+    for axis, bc in ((0, bc_x), (1, bc_y)):
+        if bc == "periodic":
+            continue
+        if bc != "outflow":
+            raise NotImplementedError(
+                f"'{bc}' boundaries are not implemented for magnetic fields"
+            )
+        rho, vx, vy, P, bx, by = (pad_edge(f, axis) for f in (rho, vx, vy, P, bx, by))
 
     # get Conserved variables
     Bx, By = get_avg(bx, by)
@@ -506,6 +536,25 @@ def hydro_mhd2d_fluxes(
         P_dx, P_dy = slope_limit(P, P_dx, P_dy, dx, dy)
         Bx_dx, Bx_dy = slope_limit(Bx, Bx_dx, Bx_dy, dx, dy)
         By_dx, By_dy = slope_limit(By, By_dx, By_dy, dx, dy)
+
+    # set ghost cell gradients
+    for axis, has_ghosts in ((0, x_has_ghosts), (1, y_has_ghosts)):
+        if not has_ghosts:
+            continue
+        if axis == 0:
+            rho_dx = zero_ghost_gradients(rho_dx, axis)
+            vx_dx = zero_ghost_gradients(vx_dx, axis)
+            vy_dx = zero_ghost_gradients(vy_dx, axis)
+            P_dx = zero_ghost_gradients(P_dx, axis)
+            Bx_dx = zero_ghost_gradients(Bx_dx, axis)
+            By_dx = zero_ghost_gradients(By_dx, axis)
+        else:
+            rho_dy = zero_ghost_gradients(rho_dy, axis)
+            vx_dy = zero_ghost_gradients(vx_dy, axis)
+            vy_dy = zero_ghost_gradients(vy_dy, axis)
+            P_dy = zero_ghost_gradients(P_dy, axis)
+            Bx_dy = zero_ghost_gradients(Bx_dy, axis)
+            By_dy = zero_ghost_gradients(By_dy, axis)
 
     # extrapolate half-step in time
     rho_prime = rho - 0.5 * dt * (vx * rho_dx + rho * vx_dx + vy * rho_dy + rho * vy_dy)
@@ -588,6 +637,13 @@ def hydro_mhd2d_fluxes(
     Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, dy, dx, dt)
     Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, dy, dx, dt)
     bx, by = constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt)
+
+    # remove ghost cells
+    for axis, has_ghosts in ((0, x_has_ghosts), (1, y_has_ghosts)):
+        if has_ghosts:
+            Mass, Momx, Momy, Energy, bx, by = (
+                strip_ghosts(f, axis) for f in (Mass, Momx, Momy, Energy, bx, by)
+            )
 
     # get Primitive variables
     Bx, By = get_avg(bx, by)

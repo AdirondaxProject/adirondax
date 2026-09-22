@@ -48,6 +48,18 @@ class Simulation:
 
         bc_x, bc_y = self.params["mesh"]["boundary_condition"][:2]
 
+        for bc in (bc_x, bc_y):
+            if bc not in ["periodic", "reflective", "axis", "outflow"]:
+                raise ValueError(f"unknown boundary condition: '{bc}'")
+
+        if self.params["physics"]["magnetic"]:
+            for bc in (bc_x, bc_y):
+                if bc not in ["periodic", "outflow"]:
+                    raise NotImplementedError(
+                        f"'{bc}' boundaries are not yet implemented for "
+                        "magnetic=True (use 'periodic' or 'outflow')"
+                    )
+
         if bc_y == "axis":
             raise ValueError(
                 "the 'axis' boundary condition only applies to dimension 0"
@@ -280,11 +292,10 @@ class Simulation:
         use_adaptive_timesteps = nt < 1
         dt_ref = jnp.nan if use_adaptive_timesteps else t_span / nt
 
-        # boundary conditions. The cylindrical axis is a reflecting boundary
-        # with an extra twist: the azimuthal velocity reverses through R=0.
-        bc_x_is_axis = bc_x == "axis"
-        bc_x_is_reflective = bc_x in ("reflective", "axis")
-        bc_y_is_reflective = bc_y == "reflective"
+        # the cylindrical axis is a reflecting boundary with an extra twist:
+        # the azimuthal velocity reverses sense through R=0
+        x_has_ghosts = bc_x != "periodic"
+        y_has_ghosts = bc_y != "periodic"
 
         # mesh metric factors: 'geom' on the bare grid, 'geom_work' on the
         # ghost-extended grid the flux routine operates on
@@ -293,7 +304,7 @@ class Simulation:
             self.geometry,
             self.box_size,
             self.resolution,
-            num_ghost_x=1 if bc_x_is_reflective else 0,
+            num_ghost_x=1 if x_has_ghosts else 0,
         )
 
         # Physics flags
@@ -389,7 +400,7 @@ class Simulation:
                         raise NotImplementedError("implement me.")
                     kx, ky = self.kgrid
                     ax, ay = get_acceleration(
-                        V, kx, ky, dx, dy, bc_x_is_reflective, bc_y_is_reflective
+                        V, kx, ky, dx, dy, x_has_ghosts, y_has_ghosts
                     )
                     state["vx"], state["vy"], state["P"] = hydro_euler2d_accelerate(
                         state["rho"],
@@ -432,6 +443,8 @@ class Simulation:
                         dt,
                         riemann_solver_type,
                         use_slope_limiting,
+                        bc_x,
+                        bc_y,
                     )
                 else:
                     rho_new, vx_new, vy_new, P_new, vphi_new = hydro_euler2d_fluxes(
@@ -445,9 +458,8 @@ class Simulation:
                         dt,
                         riemann_solver_type,
                         use_slope_limiting,
-                        bc_x_is_reflective,
-                        bc_y_is_reflective,
-                        bc_x_is_axis,
+                        bc_x,
+                        bc_y,
                     )
                     state["rho"] = rho_new
                     state["vx"] = vx_new

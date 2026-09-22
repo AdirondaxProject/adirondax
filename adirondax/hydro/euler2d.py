@@ -1,6 +1,13 @@
 import jax.numpy as jnp
 
-from .common2d import apply_fluxes, extrapolate_to_face, get_gradient, slope_limit
+from .common2d import (
+    apply_fluxes,
+    extrapolate_to_face,
+    get_gradient,
+    pad_edge,
+    slope_limit,
+    zero_ghost_gradients,
+)
 
 # Pure functions for 2D Euler hydrodynamics
 
@@ -237,15 +244,24 @@ def _mirror(f, axis, sign_lo, sign_hi):
         return jnp.concatenate((sign_lo * f[:, 0:1], f, sign_hi * f[:, -1:]), axis=1)
 
 
-def add_ghost_cells(rho, vx, vy, P, vphi, axis, is_axis=False):
+def add_ghost_cells(rho, vx, vy, P, vphi, axis, bc):
     """
-    Add ghost cells for reflective boundary conditions along given axis
+    Add ghost cells for a non-periodic boundary along the given axis
 
-    Fields are mirrored evenly, except the velocity component normal to the
-    boundary, which is mirrored oddly. On the cylindrical axis the azimuthal
-    velocity is odd as well (it reverses sense through R=0), whereas at an
-    ordinary free-slip wall it is tangential and therefore even.
+    'outflow' copies the edge value outwards, so waves leave the domain.
+    'reflective' and 'axis' mirror the fields evenly, except the velocity
+    component normal to the boundary, which is mirrored oddly. On the
+    cylindrical axis the azimuthal velocity is odd as well (it reverses sense
+    through R=0), whereas at an ordinary free-slip wall it is tangential and
+    therefore even.
     """
+
+    if bc == "outflow":
+        return tuple(
+            None if f is None else pad_edge(f, axis) for f in (rho, vx, vy, P, vphi)
+        )
+
+    is_axis = bc == "axis"
 
     if axis == 0:
         rho_new = _mirror(rho, 0, 1.0, 1.0)
@@ -309,23 +325,22 @@ def hydro_euler2d_fluxes(
     dt,
     riemann_solver_type,
     use_slope_limiting,
-    bc_x_is_reflective,
-    bc_y_is_reflective,
-    bc_x_is_axis=False,
+    bc_x,
+    bc_y,
 ):
     """Take a simulation timestep"""
 
     dx = geom["dx"]
     dy = geom["dy"]
     is_cylindrical = geom["is_cylindrical"]
+    x_has_ghosts = bc_x != "periodic"
+    y_has_ghosts = bc_y != "periodic"
 
     # Add Ghost Cells (if needed)
-    if bc_x_is_reflective:
-        rho, vx, vy, P, vphi = add_ghost_cells(
-            rho, vx, vy, P, vphi, axis=0, is_axis=bc_x_is_axis
-        )
-    if bc_y_is_reflective:
-        rho, vx, vy, P, vphi = add_ghost_cells(rho, vx, vy, P, vphi, axis=1)
+    if x_has_ghosts:
+        rho, vx, vy, P, vphi = add_ghost_cells(rho, vx, vy, P, vphi, 0, bc_x)
+    if y_has_ghosts:
+        rho, vx, vy, P, vphi = add_ghost_cells(rho, vx, vy, P, vphi, 1, bc_y)
 
     # get Conserved variables
     Mass, Momx, Momy, Energy, Angmom = get_conserved(rho, vx, vy, P, vphi, gamma, geom)
@@ -348,14 +363,28 @@ def hydro_euler2d_fluxes(
             vphi_dx, vphi_dy = slope_limit(vphi, vphi_dx, vphi_dy, dx, dy)
 
     # set ghost cell gradients
-    if bc_x_is_reflective:
+    if bc_x == "outflow":
+        rho_dx = zero_ghost_gradients(rho_dx, axis=0)
+        vx_dx = zero_ghost_gradients(vx_dx, axis=0)
+        vy_dx = zero_ghost_gradients(vy_dx, axis=0)
+        P_dx = zero_ghost_gradients(P_dx, axis=0)
+        if vphi is not None:
+            vphi_dx = zero_ghost_gradients(vphi_dx, axis=0)
+    elif x_has_ghosts:
         rho_dx = set_ghost_gradients(rho_dx, axis=0)
         vx_dx = set_ghost_gradients(vx_dx, axis=0, is_odd_lo=True, is_odd_hi=True)
         vy_dx = set_ghost_gradients(vy_dx, axis=0)
         P_dx = set_ghost_gradients(P_dx, axis=0)
         if vphi is not None:
-            vphi_dx = set_ghost_gradients(vphi_dx, axis=0, is_odd_lo=bc_x_is_axis)
-    if bc_y_is_reflective:
+            vphi_dx = set_ghost_gradients(vphi_dx, axis=0, is_odd_lo=bc_x == "axis")
+    if bc_y == "outflow":
+        rho_dy = zero_ghost_gradients(rho_dy, axis=1)
+        vx_dy = zero_ghost_gradients(vx_dy, axis=1)
+        vy_dy = zero_ghost_gradients(vy_dy, axis=1)
+        P_dy = zero_ghost_gradients(P_dy, axis=1)
+        if vphi is not None:
+            vphi_dy = zero_ghost_gradients(vphi_dy, axis=1)
+    elif y_has_ghosts:
         rho_dy = set_ghost_gradients(rho_dy, axis=1)
         vx_dy = set_ghost_gradients(vx_dy, axis=1)
         vy_dy = set_ghost_gradients(vy_dy, axis=1, is_odd_lo=True, is_odd_hi=True)
@@ -452,17 +481,17 @@ def hydro_euler2d_fluxes(
             Momx = Momx + dt * (rho_prime * geom["vol"]) * vphi_prime**2 / geom["r"]
 
     # remove ghost cells
-    if bc_x_is_reflective:
+    if x_has_ghosts:
         Mass, Momx, Momy, Energy, Angmom = remove_ghost_cells(
             Mass, Momx, Momy, Energy, Angmom, axis=0
         )
-    if bc_y_is_reflective:
+    if y_has_ghosts:
         Mass, Momx, Momy, Energy, Angmom = remove_ghost_cells(
             Mass, Momx, Momy, Energy, Angmom, axis=1
         )
 
     rho, vx, vy, P, vphi = get_primitive(
-        Mass, Momx, Momy, Energy, Angmom, gamma, geom_strip(geom, bc_x_is_reflective)
+        Mass, Momx, Momy, Energy, Angmom, gamma, geom_strip(geom, x_has_ghosts)
     )
 
     return rho, vx, vy, P, vphi

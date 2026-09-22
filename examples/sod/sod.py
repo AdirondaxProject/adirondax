@@ -14,7 +14,7 @@ Philip Mocz (2026)
 """
 
 GAMMA = 1.4
-X_DIAPHRAGM = 0.5
+X_INTERFACE = 0.5
 RHO_L, VX_L, P_L = 1.0, 0.0, 1.0
 RHO_R, VX_R, P_R = 0.125, 0.0, 0.1
 
@@ -58,7 +58,7 @@ def set_up_simulation(resolution_multiplier=4, save=True):
     # Set initial conditions
     sim.state["t"] = 0.0
     X, _ = sim.mesh
-    left = X < X_DIAPHRAGM
+    left = X < X_INTERFACE
 
     sim.state["rho"] = jnp.where(left, RHO_L, RHO_R)
     sim.state["vx"] = jnp.where(left, VX_L, VX_R)
@@ -68,7 +68,7 @@ def set_up_simulation(resolution_multiplier=4, save=True):
     return sim
 
 
-def exact_riemann(x, t, gamma=GAMMA, x0=X_DIAPHRAGM):
+def exact_riemann(x, t, gamma=GAMMA, x0=X_INTERFACE):
     """
     Exact solution of the Riemann problem for an ideal gas
     """
