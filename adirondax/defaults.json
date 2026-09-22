@@ -96,7 +96,7 @@
     },
     "riemann_solver": {
       "default": "llf",
-      "description": "options: 'llf', 'hlld'."
+      "description": "options: 'llf', 'hllc' (hydro only), 'hlld' (magnetic only)."
     },
     "cfl": {
       "default": 0.5,

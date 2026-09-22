@@ -231,3 +231,99 @@ def test_validation_errors():
     p["physics"]["gravity"] = True
     with pytest.raises(NotImplementedError, match="gravity"):
         adx.Simulation(p)
+
+
+# --------------------------------------------------------------------------
+# HLLC Riemann solver
+# --------------------------------------------------------------------------
+def test_hllc_is_consistent_on_a_uniform_state():
+    """A uniform state must reproduce the exact physical flux"""
+    from adirondax.hydro.euler2d import get_flux_hllc
+
+    rho, u, v, P, gamma = 1.3, 0.7, -0.4, 2.1, 5.0 / 3.0
+    one = jnp.ones((3, 3))
+    f_mass, f_momx, f_momy, f_en, f_momphi = get_flux_hllc(
+        rho * one,
+        rho * one,
+        u * one,
+        u * one,
+        v * one,
+        v * one,
+        P * one,
+        P * one,
+        None,
+        None,
+        gamma,
+    )
+    en = P / (gamma - 1.0) + 0.5 * rho * (u**2 + v**2)
+    np.testing.assert_allclose(f_mass, rho * u * one, rtol=1e-12)
+    np.testing.assert_allclose(f_momx, (rho * u**2 + P) * one, rtol=1e-12)
+    np.testing.assert_allclose(f_momy, rho * u * v * one, rtol=1e-12)
+    np.testing.assert_allclose(f_en, (en + P) * u * one, rtol=1e-12)
+    assert f_momphi is None
+
+
+def test_hllc_resolves_the_contact_better_than_llf():
+    """
+    Sod shock tube on a cartesian mesh.
+    """
+
+    def run(solver):
+        params = {
+            "physics": {"hydro": True},
+            "mesh": {
+                "geometry": "cartesian",
+                "resolution": [400, 4],
+                "box_size": [1.0, 0.01],
+                "boundary_condition": ["reflective", "periodic"],
+            },
+            "time": {"span": 0.2, "num_timesteps": 2000},
+            "hydro": {
+                "eos": {"gamma": 1.4},
+                "slope_limiting": True,
+                "riemann_solver": solver,
+            },
+        }
+        sim = adx.Simulation(params)
+        sim.state["t"] = 0.0
+        X, _ = sim.mesh
+        sim.state["rho"] = jnp.where(X < 0.5, 1.0, 0.125)
+        sim.state["vx"] = jnp.zeros_like(X)
+        sim.state["vy"] = jnp.zeros_like(X)
+        sim.state["P"] = jnp.where(X < 0.5, 1.0, 0.1)
+        sim.run()
+        return np.asarray(X[:, 0]), np.asarray(sim.state["rho"][:, 0])
+
+    x, rho_llf = run("llf")
+    _, rho_hllc = run("hllc")
+
+    # the two star-region plateaus, exact values 0.4263 and 0.2656
+    for rho in (rho_llf, rho_hllc):
+        assert abs(rho[(x > 0.55) & (x < 0.65)].mean() - 0.4263) < 5e-3
+        assert abs(rho[(x > 0.75) & (x < 0.82)].mean() - 0.2656) < 5e-3
+        # solution stays monotone-ish and bounded by the initial states
+        assert rho.min() > 0.12 and rho.max() < 1.01
+
+    # cells strictly inside the contact jump: fewer is sharper
+    def contact_width(rho):
+        m = (x > 0.60) & (x < 0.76)
+        return int(np.sum((rho[m] > 0.2750) & (rho[m] < 0.4170)))
+
+    assert contact_width(rho_hllc) < contact_width(rho_llf)
+
+
+def test_hllc_preserves_cylindrical_well_balancedness():
+    p = make_params(nt=30, t_stop=0.3)
+    p["hydro"]["riemann_solver"] = "hllc"
+    sim = adx.Simulation(p)
+    sim.state["t"] = 0.0
+    R, _ = sim.mesh
+    sim.state["rho"] = jnp.ones_like(R)
+    sim.state["vx"] = jnp.zeros_like(R)
+    sim.state["vy"] = jnp.zeros_like(R)
+    sim.state["P"] = jnp.ones_like(R)
+    sim.run()
+
+    assert jnp.max(jnp.abs(sim.state["rho"] - 1.0)) < 1e-12
+    assert jnp.max(jnp.abs(sim.state["P"] - 1.0)) < 1e-12
+    assert jnp.max(jnp.abs(sim.state["vx"])) < 1e-12

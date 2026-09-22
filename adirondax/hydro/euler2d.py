@@ -86,12 +86,89 @@ def get_flux_llf(rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, vphi_L, vphi_R,
     C = jnp.maximum(C_L, C_R)
 
     # add stabilizing diffusive term
-    flux_Mass -= C * 0.5 * (rho_L - rho_R)
-    flux_Momx -= C * 0.5 * (rho_L * vx_L - rho_R * vx_R)
-    flux_Momy -= C * 0.5 * (rho_L * vy_L - rho_R * vy_R)
-    flux_Energy -= C * 0.5 * (en_L - en_R)
+    flux_Mass -= C * 0.5 * (rho_R - rho_L)
+    flux_Momx -= C * 0.5 * (rho_R * vx_R - rho_L * vx_L)
+    flux_Momy -= C * 0.5 * (rho_R * vy_R - rho_L * vy_L)
+    flux_Energy -= C * 0.5 * (en_R - en_L)
     if has_rotation:
-        flux_Momphi -= C * 0.5 * (rho_L * vphi_L - rho_R * vphi_R)
+        flux_Momphi -= C * 0.5 * (rho_R * vphi_R - rho_L * vphi_L)
+
+    return flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_Momphi
+
+
+def get_flux_hllc(
+    rho_L, rho_R, vx_L, vx_R, vy_L, vy_R, P_L, P_R, vphi_L, vphi_R, gamma
+):
+    """
+    Calculate fluxes between 2 states with the HLLC approximate Riemann solver
+    """
+
+    has_rotation = vphi_L is not None
+
+    rho_l, u_l, v_l, p_l = rho_L, vx_L, vy_L, P_L
+    rho_r, u_r, v_r, p_r = rho_R, vx_R, vy_R, P_R
+    w_l = vphi_L if has_rotation else 0.0
+    w_r = vphi_R if has_rotation else 0.0
+
+    # total energy density
+    en_l = p_l / (gamma - 1.0) + 0.5 * rho_l * (u_l**2 + v_l**2 + w_l**2)
+    en_r = p_r / (gamma - 1.0) + 0.5 * rho_r * (u_r**2 + v_r**2 + w_r**2)
+
+    # outer signal speeds (Davis estimate)
+    a_l = jnp.sqrt(gamma * p_l / rho_l)
+    a_r = jnp.sqrt(gamma * p_r / rho_r)
+    s_l = jnp.minimum(u_l - a_l, u_r - a_r)
+    s_r = jnp.maximum(u_l + a_l, u_r + a_r)
+
+    # contact wave speed. The denominator cannot vanish for physical states:
+    # (s_l - u_l) <= -a_l < 0 while (s_r - u_r) >= a_r > 0.
+    d_l = rho_l * (s_l - u_l)
+    d_r = rho_r * (s_r - u_r)
+    s_star = (p_r - p_l + d_l * u_l - d_r * u_r) / (d_l - d_r)
+
+    def state_and_flux(rho_k, u_k, v_k, w_k, p_k, en_k):
+        U = (rho_k, rho_k * u_k, rho_k * v_k, en_k, rho_k * w_k)
+        F = (
+            rho_k * u_k,
+            rho_k * u_k**2 + p_k,
+            rho_k * u_k * v_k,
+            (en_k + p_k) * u_k,
+            rho_k * u_k * w_k,
+        )
+        return U, F
+
+    def star_flux(rho_k, u_k, v_k, w_k, p_k, en_k, s_k, d_k):
+        """Flux of the intermediate state: F*_k = F_k + s_k (U*_k - U_k)"""
+        U, F = state_and_flux(rho_k, u_k, v_k, w_k, p_k, en_k)
+        rho_star = rho_k * (s_k - u_k) / (s_k - s_star)
+        en_star = rho_star * (en_k / rho_k + (s_star - u_k) * (s_star + p_k / d_k))
+        U_star = (
+            rho_star,
+            rho_star * s_star,
+            rho_star * v_k,
+            en_star,
+            rho_star * w_k,
+        )
+        return tuple(f + s_k * (us - u) for f, us, u in zip(F, U_star, U))
+
+    _, flux_l = state_and_flux(rho_l, u_l, v_l, w_l, p_l, en_l)
+    _, flux_r = state_and_flux(rho_r, u_r, v_r, w_r, p_r, en_r)
+    flux_star_l = star_flux(rho_l, u_l, v_l, w_l, p_l, en_l, s_l, d_l)
+    flux_star_r = star_flux(rho_r, u_r, v_r, w_r, p_r, en_r, s_r, d_r)
+
+    # pick the state the interface sits in
+    flux = tuple(
+        jnp.where(
+            s_l >= 0.0,
+            f_l,
+            jnp.where(s_star >= 0.0, fs_l, jnp.where(s_r >= 0.0, fs_r, f_r)),
+        )
+        for f_l, fs_l, fs_r, f_r in zip(flux_l, flux_star_l, flux_star_r, flux_r)
+    )
+
+    flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_Momphi = flux
+    if not has_rotation:
+        flux_Momphi = None
 
     return flux_Mass, flux_Momx, flux_Momy, flux_Energy, flux_Momphi
 
@@ -110,8 +187,20 @@ def get_flux(
     gamma,
     riemann_solver_type,
 ):
-    if riemann_solver_type == "XXX":
-        return None
+    if riemann_solver_type == "hllc":
+        return get_flux_hllc(
+            rho_L,
+            rho_R,
+            vx_L,
+            vx_R,
+            vy_L,
+            vy_R,
+            P_L,
+            P_R,
+            vphi_L,
+            vphi_R,
+            gamma,
+        )
     else:
         # default
         return get_flux_llf(

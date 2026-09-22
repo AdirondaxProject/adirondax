@@ -1,4 +1,8 @@
-# Sedov-Taylor blast wave (cylindrical)
+# Sedov-Taylor blast wave
+
+Simulate the Sedov-Taylor blast wave in cylindrical coordinates.
+
+Philip Mocz (2026)
 
 A point explosion in a uniform medium, run on a 2D cylindrical mesh.
 

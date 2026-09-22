@@ -35,13 +35,18 @@ Gallery
          :alt: rayleigh_taylor
          :target: examples.html#rayleigh-taylor
 
-   * - .. figure:: ../../examples/sedov/movie.gif
+   * - .. figure:: ../../examples/sod/movie.gif
+         :height: 128px
+         :align: center
+         :alt: sod
+         :target: examples.html#sod
+
+     - .. figure:: ../../examples/sedov/movie.gif
          :height: 128px
          :align: center
          :alt: sedov
          :target: examples.html#sedov
 
-     -
      -
      -
 
@@ -133,6 +138,28 @@ Script:
 .. literalinclude:: ../../examples/rayleigh_taylor/rayleigh_taylor.py
   :language: python
 
+
+
+sod
+---
+
+.. figure:: ../../examples/sod/movie.gif
+  :height: 256px
+  :align: center
+  :alt: sod
+  :target: examples.html#sod
+
+  See on GitHub: `examples/sod <https://github.com/AdirondaxProject/adirondax/tree/main/examples/sod>`_
+
+README:
+
+.. literalinclude:: ../../examples/sod/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/sod/sod.py
+  :language: python
 
 
 sedov

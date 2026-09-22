@@ -75,7 +75,7 @@ class Simulation:
             if not self.params["physics"]["hydro"]:
                 raise ValueError("'rotation' requires hydro")
 
-        if self.params["hydro"]["riemann_solver"] not in ["llf", "hlld"]:
+        if self.params["hydro"]["riemann_solver"] not in ["llf", "hlld", "hllc"]:
             raise ValueError("riemann solver does not exist")
 
         if (
@@ -83,6 +83,12 @@ class Simulation:
             and not self.params["physics"]["magnetic"]
         ):
             raise ValueError("'hlld' riemann solver only exists for magnetic=True")
+
+        if (
+            self.params["hydro"]["riemann_solver"] == "hllc"
+            and self.params["physics"]["magnetic"]
+        ):
+            raise ValueError("'hllc' riemann solver only exists for magnetic=False")
 
         if (
             self.params["mesh"]["boundary_condition"][0] != "periodic"

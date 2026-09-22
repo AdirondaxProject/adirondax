@@ -28,9 +28,9 @@ GAMMA = 5.0 / 3.0
 
 def set_up_simulation():
     # Define the parameters for the simulation
-    nR = 128
-    nz = 256
-    nt = 400
+    nR = 256
+    nz = 512
+    nt = 800
     t_stop = 0.05
 
     params = {

@@ -78,15 +78,20 @@ def slope_limit(f, f_dx, f_dy, dx, dy):
 
 
 def extrapolate_to_face(f, f_dx, f_dy, dx, dy):
-    """Extrapolate the field from face centers to faces using gradients"""
+    """
+    Extrapolate the field from cell centers to the faces using gradients
 
-    f_XL = f - f_dx * dx / 2.0
-    f_XL = jnp.roll(f_XL, -1, axis=0)  # right/up roll
-    f_XR = f + f_dx * dx / 2.0
+    Each pair holds the two states that meet at the face above the cell (i+1/2
+    or j+1/2), in the usual Riemann-solver convention: '_L' is extrapolated
+    forwards from the cell below the face and '_R' backwards from the cell
+    above it.
+    """
 
-    f_YL = f - f_dy * dy / 2.0
-    f_YL = jnp.roll(f_YL, -1, axis=1)
-    f_YR = f + f_dy * dy / 2.0
+    f_XL = f + f_dx * dx / 2.0
+    f_XR = jnp.roll(f - f_dx * dx / 2.0, -1, axis=0)  # right/up roll
+
+    f_YL = f + f_dy * dy / 2.0
+    f_YR = jnp.roll(f - f_dy * dy / 2.0, -1, axis=1)
 
     return f_XL, f_XR, f_YL, f_YR
 
