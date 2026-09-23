@@ -49,12 +49,19 @@ class Simulation:
         bc_x, bc_y = self.params["mesh"]["boundary_condition"][:2]
 
         for bc in (bc_x, bc_y):
-            if bc not in ["periodic", "reflective", "axis", "outflow"]:
+            if bc not in [
+                "periodic",
+                "reflective",
+                "axis",
+                "outflow",
+                "wall",
+                "driven",
+            ]:
                 raise ValueError(f"unknown boundary condition: '{bc}'")
 
         if self.params["physics"]["magnetic"]:
             for bc in (bc_x, bc_y):
-                if bc not in ["periodic", "outflow", "axis"]:
+                if bc not in ["periodic", "outflow", "axis", "wall", "driven"]:
                     raise NotImplementedError(
                         f"'{bc}' boundaries are not yet implemented for "
                         "magnetic=True (use 'periodic' or 'outflow')"

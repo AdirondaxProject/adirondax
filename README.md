@@ -63,6 +63,9 @@ See the docs for more info on how to [build from source](https://adirondax.readt
 Check out the [`examples/`](https://github.com/AdirondaxProject/adirondax/tree/main/examples/) directory for demonstrations of using Adirondax.
 
 <p align="center">
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/flux_compression">
+    <img src="examples/flux_compression/movie.gif" alt="flux_compression" height="128"/>
+  </a>
   <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/kelvin_helmholtz">
     <img src="examples/kelvin_helmholtz/movie.gif" alt="kelvin_helmholtz" height="128"/>
   </a>

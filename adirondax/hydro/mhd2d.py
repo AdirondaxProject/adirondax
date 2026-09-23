@@ -65,6 +65,12 @@ def get_primitive(
     return rho, vx, vy, P_tot, vz
 
 
+def _pad_driven(f, axis, lo, hi):
+    """Pad a field with caller-supplied ghost values on each side of an axis"""
+
+    return jnp.concatenate((lo, f, hi), axis=axis)
+
+
 def _ghost_parity(f_d, axis, is_odd):
     """
     Mirror the normal gradient into the ghost cells.
@@ -599,6 +605,8 @@ def hydro_mhd2d_fluxes(
     vz=None,
     bz=None,
     geom_bare=None,
+    ghost_x=None,
+    ghost_y=None,
 ):
     """
     Take a simulation timestep
@@ -624,6 +632,30 @@ def hydro_mhd2d_fluxes(
             )
             if use_out_of_plane:
                 vz, bz = (pad_edge(f, axis) for f in (vz, bz))
+        elif bc == "driven":
+            # Ghost values supplied by the caller, e.g. to implement an external driver.
+            ghost = ghost_x if axis == 0 else ghost_y
+            rho, vx, vy, P, bx, by = (
+                _pad_driven(f, axis, *ghost[name])
+                for f, name in zip(
+                    (rho, vx, vy, P, bx, by),
+                    ("rho", "vx", "vy", "P", "bx", "by"),
+                )
+            )
+            if use_out_of_plane:
+                vz = _pad_driven(vz, axis, *ghost["vz"])
+                bz = _pad_driven(bz, axis, *ghost["bz"])
+        elif bc == "wall":
+            # A perfectly conducting wall.
+            rho, vy, P = (_mirror(f, axis, 1.0, 1.0) for f in (rho, vy, P))
+            vx = _mirror(vx, axis, -1.0, -1.0)
+            by = _mirror(by, axis, 1.0, 1.0)
+            bx = jnp.concatenate(
+                (jnp.zeros_like(bx[0:1, :]), bx, jnp.zeros_like(bx[-1:, :])), axis=0
+            )
+            if use_out_of_plane:
+                vz = _mirror(vz, axis, 1.0, 1.0)
+                bz = _mirror(bz, axis, 1.0, 1.0)
         elif bc == "axis":
             rho, vy, P = (_mirror(f, axis, 1.0, 1.0) for f in (rho, vy, P))
             vx = _mirror(vx, axis, -1.0, -1.0)
@@ -673,7 +705,29 @@ def hydro_mhd2d_fluxes(
     for axis, has_ghosts in ((0, x_has_ghosts), (1, y_has_ghosts)):
         if not has_ghosts:
             continue
-        if axis == 0 and bc_x == "axis":
+        if axis == 0 and bc_x in ("driven", "wall"):
+            if bc_x == "driven":
+                # the ghost values are data, so flatten the slopes into them
+                rho_dx = zero_ghost_gradients(rho_dx, axis)
+                vx_dx = zero_ghost_gradients(vx_dx, axis)
+                vy_dx = zero_ghost_gradients(vy_dx, axis)
+                P_dx = zero_ghost_gradients(P_dx, axis)
+                Bx_dx = zero_ghost_gradients(Bx_dx, axis)
+                By_dx = zero_ghost_gradients(By_dx, axis)
+                if use_out_of_plane:
+                    vz_dx = zero_ghost_gradients(vz_dx, axis)
+                    Bz_dx = zero_ghost_gradients(Bz_dx, axis)
+            else:
+                rho_dx = _ghost_parity(rho_dx, axis, False)
+                vy_dx = _ghost_parity(vy_dx, axis, False)
+                P_dx = _ghost_parity(P_dx, axis, False)
+                Bx_dx = _ghost_parity(Bx_dx, axis, True)
+                By_dx = _ghost_parity(By_dx, axis, False)
+                vx_dx = _ghost_parity(vx_dx, axis, True)
+                if use_out_of_plane:
+                    vz_dx = _ghost_parity(vz_dx, axis, False)
+                    Bz_dx = _ghost_parity(Bz_dx, axis, False)
+        elif axis == 0 and bc_x == "axis":
             rho_dx = _ghost_parity(rho_dx, axis, False)
             vy_dx = _ghost_parity(vy_dx, axis, False)
             P_dx = _ghost_parity(P_dx, axis, False)

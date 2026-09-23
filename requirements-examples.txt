@@ -1,0 +1,2 @@
+# Extra dependencies used only by the scripts in examples/, not by the library.
+spicex

@@ -59,6 +59,38 @@ Gallery
          :alt: alfven_wave
          :target: examples.html#alfven-wave
 
+   * - .. figure:: ../../examples/flux_compression/movie.gif
+         :height: 128px
+         :align: center
+         :alt: flux_compression
+         :target: examples.html#flux-compression
+
+     -
+     -
+     -
+
+
+flux_compression
+----------------
+
+.. figure:: ../../examples/flux_compression/movie.gif
+  :height: 256px
+  :align: center
+  :alt: flux_compression
+  :target: examples.html#flux-compression
+
+  See on GitHub: `examples/flux_compression <https://github.com/AdirondaxProject/adirondax/tree/main/examples/flux_compression>`_
+
+README:
+
+.. literalinclude:: ../../examples/flux_compression/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/flux_compression/flux_compression.py
+  :language: python
+
 
 kelvin_helmholtz
 ----------------
