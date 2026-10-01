@@ -1,6 +1,11 @@
 import jax.numpy as jnp
 
-from .boundary import add_ghost_cells, set_ghost_gradients, strip_ghosts
+from .boundary import (
+    add_ghost_cells,
+    reset_ghost_cells,
+    set_ghost_gradients,
+    strip_ghosts,
+)
 from .common2d import (
     apply_fluxes,
     face_states,
@@ -491,6 +496,107 @@ def hydro_mhd2d_timestep(W, gamma, dx, dy):
     return dt
 
 
+def half_step(W, W_dx, W_dy, gamma, geom, dt):
+    """
+    Extrapolate the cell-centered primitive fields half a timestep in time
+    """
+
+    is_cylindrical = geom["is_cylindrical"]
+    r = geom["r"]
+    use_out_of_plane = "vz" in W
+    Bx, By = W["Bx"], W["By"]
+
+    rho, vx, vy, P = W["rho"], W["vx"], W["vy"], W["P"]
+    rho_dx, vx_dx, vy_dx, P_dx = (W_dx[k] for k in ("rho", "vx", "vy", "P"))
+    rho_dy, vx_dy, vy_dy, P_dy = (W_dy[k] for k in ("rho", "vx", "vy", "P"))
+    Bx_dx, By_dx, Bx_dy, By_dy = W_dx["Bx"], W_dx["By"], W_dy["Bx"], W_dy["By"]
+
+    div_v = vx_dx + vy_dy
+    if is_cylindrical:
+        div_v = div_v + vx / r
+
+    Wp = {}
+    Wp["rho"] = rho - 0.5 * dt * (vx * rho_dx + vy * rho_dy + rho * div_v)
+    Wp["vx"] = vx - 0.5 * dt * (
+        vx * vx_dx
+        + vy * vx_dy
+        + (1.0 / rho) * P_dx
+        - (2.0 * Bx / rho) * Bx_dx
+        - (By / rho) * Bx_dy
+        - (Bx / rho) * By_dy
+    )
+    Wp["vy"] = vy - 0.5 * dt * (
+        vx * vy_dx
+        + vy * vy_dy
+        + (1.0 / rho) * P_dy
+        - (2.0 * By / rho) * By_dy
+        - (Bx / rho) * By_dx
+        - (By / rho) * Bx_dx
+    )
+    B_sq = Bx**2 + By**2
+    if use_out_of_plane:
+        vz, bz = W["vz"], W["Bz"]
+        vz_dx, vz_dy, Bz_dx, Bz_dy = W_dx["vz"], W_dy["vz"], W_dx["Bz"], W_dy["Bz"]
+        B_sq = B_sq + bz**2
+    Wp["P"] = P - 0.5 * dt * (
+        gamma * (P - 0.5 * B_sq) * div_v
+        + By**2 * vx_dx
+        - Bx * By * vy_dx
+        + vx * P_dx
+        + (gamma - 2.0) * (Bx * vx + By * vy) * Bx_dx
+        - By * Bx * vx_dy
+        + Bx**2 * vy_dy
+        + vy * P_dy
+        + (gamma - 2.0) * (Bx * vx + By * vy) * By_dy
+    )
+    if use_out_of_plane:
+        # the out-of-plane field adds magnetic pressure that resists in-plane
+        # compression, and couples to the shear in vz
+        Wp["P"] = Wp["P"] - 0.5 * dt * (
+            bz**2 * (vx_dx + vy_dy) - bz * Bx * vz_dx - bz * By * vz_dy
+        )
+
+    Wp["Bx"] = Bx - 0.5 * dt * (-By * vx_dy + Bx * vy_dy + vy * Bx_dy - vx * By_dy)
+    Wp["By"] = By - 0.5 * dt * (By * vx_dx - Bx * vy_dx - vy * Bx_dx + vx * By_dx)
+    if use_out_of_plane:
+        # d(vz)/dt = (B.grad) Bz / rho; in cylindrical the azimuthal equation
+        # also carries -v_R v_phi / R and +B_R B_phi / (rho R)
+        Wp["vz"] = vz - 0.5 * dt * (
+            vx * vz_dx + vy * vz_dy - (Bx / rho) * Bz_dx - (By / rho) * Bz_dy
+        )
+        if is_cylindrical:
+            Wp["vz"] = Wp["vz"] - 0.5 * dt * (vx * vz / r - Bx * bz / (rho * r))
+        # d(Bz)/dt = -div(vx Bz - vz Bx, vy Bz - vz By), using div(B) = 0
+        Wp["Bz"] = bz - 0.5 * dt * (
+            vx * Bz_dx + vy * Bz_dy + bz * (vx_dx + vy_dy) - Bx * vz_dx - By * vz_dy
+        )
+
+    # the terms above are written with cartesian divergences; in cylindrical
+    # geometry each picks up a 1/R term, and v_R feels the centrifugal force
+    # and the hoop stress. The force of B_phi on v_R is written as
+    # -(B_phi / rho R) d(R B_phi)/dR, from the slope of R B_phi ('RBz'), which
+    # vanishes in a current-free field even where the slopes are limited
+    if is_cylindrical:
+        Wp["vx"] = Wp["vx"] + 0.5 * dt * Bx**2 / (rho * r)
+        Wp["vy"] = Wp["vy"] + 0.5 * dt * Bx * By / (rho * r)
+        Wp["P"] = (
+            Wp["P"]
+            - 0.5
+            * dt
+            * ((Bx**2 + By**2) * vx + (gamma - 2.0) * (Bx * vx + By * vy) * Bx)
+            / r
+        )
+        Wp["By"] = Wp["By"] - 0.5 * dt * (vx * By - vy * Bx) / r
+        if use_out_of_plane:
+            Wp["vx"] = Wp["vx"] + 0.5 * dt * (
+                vz**2 / r + (bz / rho) * (Bz_dx - W_dx["RBz"] / r)
+            )
+            Wp["P"] = Wp["P"] - 0.5 * dt * Bx * bz * vz / r
+            Wp["Bz"] = Wp["Bz"] - 0.5 * dt * vz * Bx / r
+
+    return Wp
+
+
 def hydro_mhd2d_fluxes(
     W,
     geom,
@@ -542,77 +648,19 @@ def hydro_mhd2d_fluxes(
     U = get_conserved(Wc, gamma, geom)
 
     # calculate gradients
-    W_dx, W_dy = get_gradients(Wc, dx, dy, slope_limiting)
+    W_d = dict(Wc)
+    if is_cylindrical and use_out_of_plane:
+        W_d["RBz"] = r * Wc["Bz"]
+    W_dx, W_dy = get_gradients(W_d, dx, dy, slope_limiting)
     if x_has_ghosts:
         W_dx = set_ghost_gradients(W_dx, 0, bc_x)
     if y_has_ghosts:
         W_dy = set_ghost_gradients(W_dy, 1, bc_y)
 
-    rho, vx, vy, P = Wc["rho"], Wc["vx"], Wc["vy"], Wc["P"]
-    rho_dx, vx_dx, vy_dx, P_dx = (W_dx[k] for k in ("rho", "vx", "vy", "P"))
-    rho_dy, vx_dy, vy_dy, P_dy = (W_dy[k] for k in ("rho", "vx", "vy", "P"))
-    Bx_dx, By_dx, Bx_dy, By_dy = W_dx["Bx"], W_dx["By"], W_dy["Bx"], W_dy["By"]
-
     # extrapolate half-step in time
-    div_v = vx_dx + vy_dy
-    if is_cylindrical:
-        div_v = div_v + vx / r
-
-    Wp = {}
-    Wp["rho"] = rho - 0.5 * dt * (vx * rho_dx + vy * rho_dy + rho * div_v)
-    Wp["vx"] = vx - 0.5 * dt * (
-        vx * vx_dx
-        + vy * vx_dy
-        + (1.0 / rho) * P_dx
-        - (2.0 * Bx / rho) * Bx_dx
-        - (By / rho) * Bx_dy
-        - (Bx / rho) * By_dy
-    )
-    Wp["vy"] = vy - 0.5 * dt * (
-        vx * vy_dx
-        + vy * vy_dy
-        + (1.0 / rho) * P_dy
-        - (2.0 * By / rho) * By_dy
-        - (Bx / rho) * By_dx
-        - (By / rho) * Bx_dx
-    )
-    B_sq = Bx**2 + By**2
-    if use_out_of_plane:
-        vz, bz = Wc["vz"], Wc["Bz"]
-        vz_dx, vz_dy, Bz_dx, Bz_dy = W_dx["vz"], W_dy["vz"], W_dx["Bz"], W_dy["Bz"]
-        B_sq = B_sq + bz**2
-    Wp["P"] = P - 0.5 * dt * (
-        gamma * (P - 0.5 * B_sq) * div_v
-        + By**2 * vx_dx
-        - Bx * By * vy_dx
-        + vx * P_dx
-        + (gamma - 2.0) * (Bx * vx + By * vy) * Bx_dx
-        - By * Bx * vx_dy
-        + Bx**2 * vy_dy
-        + vy * P_dy
-        + (gamma - 2.0) * (Bx * vx + By * vy) * By_dy
-    )
-    if use_out_of_plane:
-        # the out-of-plane field adds magnetic pressure that resists in-plane
-        # compression, and couples to the shear in vz
-        Wp["P"] = Wp["P"] - 0.5 * dt * (
-            bz**2 * (vx_dx + vy_dy) - bz * Bx * vz_dx - bz * By * vz_dy
-        )
-
-    Wp["Bx"] = Bx - 0.5 * dt * (-By * vx_dy + Bx * vy_dy + vy * Bx_dy - vx * By_dy)
-    Wp["By"] = By - 0.5 * dt * (By * vx_dx - Bx * vy_dx - vy * Bx_dx + vx * By_dx)
-    if use_out_of_plane:
-        # d(vz)/dt = (B.grad) Bz / rho; in cylindrical the azimuthal equation
-        # also carries -v_R v_phi / R and +B_R B_phi / (rho R)
-        Wp["vz"] = vz - 0.5 * dt * (
-            vx * vz_dx + vy * vz_dy - (Bx / rho) * Bz_dx - (By / rho) * Bz_dy
-        )
-        if is_cylindrical:
-            Wp["vz"] = Wp["vz"] - 0.5 * dt * (vx * vz / r - Bx * bz / (rho * r))
-        # d(Bz)/dt = -div(vx Bz - vz Bx, vy Bz - vz By), using div(B) = 0
-        Wp["Bz"] = bz - 0.5 * dt * (
-            vx * Bz_dx + vy * Bz_dy + bz * (vx_dx + vy_dy) - Bx * vz_dx - By * vz_dy
-        )
+    Wp = half_step(Wc, W_dx, W_dy, gamma, geom, dt)
+    Wp = reset_ghost_cells(Wp, Wc, 0, bc_x)
+    Wp = reset_ghost_cells(Wp, Wc, 1, bc_y)
 
     # extrapolate in space to face centers, and compute fluxes
     W_XL, W_XR, W_YL, W_YR = face_states(Wp, W_dx, W_dy, dx, dy)

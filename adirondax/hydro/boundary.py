@@ -4,7 +4,7 @@ from jax import lax
 # Pure functions for ghost cells at non-periodic boundaries
 
 _NORMAL = ({"vx", "Bx", "bx"}, {"vy", "By", "by"})
-_OUT_OF_PLANE = {"vz", "Bz", "bz"}
+_OUT_OF_PLANE = {"vz", "Bz", "bz", "RBz"}
 _FACE_AXIS = {"bx": 0, "by": 1}
 _MIRRORED = ("reflective", "wall", "axis")
 
@@ -78,3 +78,25 @@ def strip_ghosts(f, axis):
     """Drop the ghost cell on each side of the given axis"""
 
     return f[1:-1, :] if axis == 0 else f[:, 1:-1]
+
+
+def reset_ghost_cells(W_half, W, axis, bc):
+    """
+    Set the ghost cells of the fields W_half, advanced half a timestep from W:
+    a mirrored boundary mirrors the advanced interior again, since the half-step
+    is not mirror-symmetric in cylindrical geometry, while the ghost cells of
+    'outflow' and 'driven' boundaries are data, which keep their values from W
+    """
+
+    if bc == "periodic":
+        return W_half
+
+    interior = {k: strip_ghosts(f, axis) for k, f in W_half.items()}
+    if bc in _MIRRORED:
+        return add_ghost_cells(interior, axis, bc)
+
+    ghost = {
+        k: (lax.index_in_dim(W[k], 0, axis), lax.index_in_dim(W[k], -1, axis))
+        for k in W_half
+    }
+    return add_ghost_cells(interior, axis, "driven", ghost)

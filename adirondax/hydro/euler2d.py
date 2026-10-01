@@ -1,6 +1,11 @@
 import jax.numpy as jnp
 
-from .boundary import add_ghost_cells, set_ghost_gradients, strip_ghosts
+from .boundary import (
+    add_ghost_cells,
+    reset_ghost_cells,
+    set_ghost_gradients,
+    strip_ghosts,
+)
 from .common2d import apply_fluxes, face_states, get_gradients, swap_xy
 from .geometry import geom_strip
 
@@ -207,6 +212,39 @@ def hydro_euler2d_timestep(W, gamma, dx, dy):
     return dt
 
 
+def half_step(W, W_dx, W_dy, gamma, geom, dt):
+    """Extrapolate the primitive fields half a timestep in time"""
+
+    is_cylindrical = geom["is_cylindrical"]
+
+    rho, vx, vy, P = W["rho"], W["vx"], W["vy"], W["P"]
+
+    # velocity divergence picks up a geometric term in cylindrical geometry
+    div_v = W_dx["vx"] + W_dy["vy"]
+    if is_cylindrical:
+        div_v = div_v + vx / geom["r"]
+
+    Wp = {
+        "rho": rho - 0.5 * dt * (vx * W_dx["rho"] + vy * W_dy["rho"] + rho * div_v),
+        "vx": vx
+        - 0.5 * dt * (vx * W_dx["vx"] + vy * W_dy["vx"] + (1.0 / rho) * W_dx["P"]),
+        "vy": vy
+        - 0.5 * dt * (vx * W_dx["vy"] + vy * W_dy["vy"] + (1.0 / rho) * W_dy["P"]),
+        "P": P - 0.5 * dt * (gamma * P * div_v + vx * W_dx["P"] + vy * W_dy["P"]),
+    }
+    if "vz" in W:
+        vz = W["vz"]
+        # in terms of the specific angular momentum R*vphi this is pure
+        # advection; written for vphi it carries the -vx*vphi/R term
+        Wp["vz"] = vz - 0.5 * dt * (
+            vx * W_dx["vz"] + vy * W_dy["vz"] + vx * vz / geom["r"]
+        )
+        # centrifugal acceleration
+        Wp["vx"] = Wp["vx"] + 0.5 * dt * vz**2 / geom["r"]
+
+    return Wp
+
+
 def hydro_euler2d_fluxes(
     W,
     geom,
@@ -250,31 +288,10 @@ def hydro_euler2d_fluxes(
     if y_has_ghosts:
         W_dy = set_ghost_gradients(W_dy, 1, bc_y)
 
-    rho, vx, vy, P = W["rho"], W["vx"], W["vy"], W["P"]
-
-    # velocity divergence picks up a geometric term in cylindrical geometry
-    div_v = W_dx["vx"] + W_dy["vy"]
-    if is_cylindrical:
-        div_v = div_v + vx / geom["r"]
-
     # extrapolate half-step in time
-    Wp = {
-        "rho": rho - 0.5 * dt * (vx * W_dx["rho"] + vy * W_dy["rho"] + rho * div_v),
-        "vx": vx
-        - 0.5 * dt * (vx * W_dx["vx"] + vy * W_dy["vx"] + (1.0 / rho) * W_dx["P"]),
-        "vy": vy
-        - 0.5 * dt * (vx * W_dx["vy"] + vy * W_dy["vy"] + (1.0 / rho) * W_dy["P"]),
-        "P": P - 0.5 * dt * (gamma * P * div_v + vx * W_dx["P"] + vy * W_dy["P"]),
-    }
-    if "vz" in W:
-        vz = W["vz"]
-        # in terms of the specific angular momentum R*vphi this is pure
-        # advection; written for vphi it carries the -vx*vphi/R term
-        Wp["vz"] = vz - 0.5 * dt * (
-            vx * W_dx["vz"] + vy * W_dy["vz"] + vx * vz / geom["r"]
-        )
-        # centrifugal acceleration
-        Wp["vx"] = Wp["vx"] + 0.5 * dt * vz**2 / geom["r"]
+    Wp = half_step(W, W_dx, W_dy, gamma, geom, dt)
+    Wp = reset_ghost_cells(Wp, W, 0, bc_x)
+    Wp = reset_ghost_cells(Wp, W, 1, bc_y)
 
     # extrapolate in space to face centers, and compute fluxes
     W_XL, W_XR, W_YL, W_YR = face_states(Wp, W_dx, W_dy, dx, dy)

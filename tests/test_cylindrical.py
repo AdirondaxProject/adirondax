@@ -450,3 +450,43 @@ def test_magnetised_annulus_is_well_balanced():
     assert jnp.max(jnp.abs(sim.state["rho"] - 1.0)) < 1e-9
     assert jnp.max(jnp.abs(sim.state["vx"])) < 1e-9
     assert jnp.max(jnp.abs(sim.state["by"] - 0.5)) < 1e-9
+
+
+@pytest.mark.parametrize("B0, Omega", [(1.0, 0.0), (0.0, 1.0)])
+def test_pinch_and_rotating_column_converge_at_second_order(B0, Omega):
+    """Equilibria held by the magnetic hoop stress, and by the centrifugal force"""
+
+    def drift(nR):
+        params = {
+            "physics": {"hydro": True, "magnetic": True, "rotation": True},
+            "mesh": {
+                "geometry": "cylindrical",
+                "resolution": [nR, 4],
+                "box_size": [1.0, 4.0 / nR],
+                "boundary_condition": ["axis", "periodic"],
+            },
+            "time": {"span": 0.5, "num_timesteps": 4 * nR},
+            "hydro": {"eos": {"gamma": 5.0 / 3.0}, "riemann_solver": "hlld"},
+        }
+        sim = adx.Simulation(params)
+        R, _ = sim.mesh
+        a, b_z = 0.3, 0.5
+        sim.state["t"] = jnp.array(0.0)
+        sim.state["rho"] = jnp.ones_like(R)
+        sim.state["vx"] = jnp.zeros_like(R)
+        sim.state["vy"] = jnp.zeros_like(R)
+        sim.state["bx"] = jnp.zeros_like(R)
+        sim.state["by"] = b_z * jnp.ones_like(R)
+        sim.state["vphi"] = Omega * R
+        sim.state["bphi"] = B0 * (R / a) * jnp.exp(-0.5 * (R / a) ** 2)
+        sim.state["P"] = (
+            1.0
+            + 0.5 * B0**2 * jnp.exp(-((R / a) ** 2))
+            + 0.5 * Omega**2 * R**2
+            + 0.5 * b_z**2
+        )
+        sim.run()
+        return float(jnp.mean(jnp.abs(sim.state["vx"])))
+
+    order = np.log2(drift(32) / drift(64))
+    assert order > 1.8, f"convergence order {order}"
