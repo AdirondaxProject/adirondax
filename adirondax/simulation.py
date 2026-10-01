@@ -16,6 +16,7 @@ from .hydro.geometry import get_geometry
 from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
 from .quantum import quantum_drift, quantum_kick, quantum_timestep
 from .utils import print_parameters, set_up_parameters
+from .validation import validate_params
 from .visualization import plot_sim
 
 
@@ -27,117 +28,20 @@ class Simulation:
     ----------
       params (dict): The python dictionary that contains the simulation parameters.
 
+    Attributes
+    ----------
+      external_potential (callable): (x, y) -> V, the external gravitational
+        potential, used when physics.external_potential is on.
+      driven_boundary (callable): (state, axis) -> {key: (lo, hi)}, the ghost
+        cells of a 'driven' boundary along the given axis, for each field.
+
     """
 
     def __init__(self, params):
         # start from default simulation parameters and update with user params
         self._params = set_up_parameters(params)
 
-        # additional checks (TODO: move these into separate function(s))
-        if len(self.resolution) != len(self.box_size):
-            raise ValueError("'resolution' and 'box_size' must have same shape")
-
-        if self.dim == 3:
-            raise NotImplementedError("3D is not yet implemented.")
-
-        if self.params["mesh"]["type"] not in ["eulerian", "lagrangian", "ale"]:
-            raise ValueError("mesh 'type' must be 'eulerian', 'lagrangian' or 'ale'")
-
-        if self.geometry not in ["cartesian", "cylindrical"]:
-            raise ValueError("mesh 'geometry' must be 'cartesian' or 'cylindrical'")
-
-        bc_x, bc_y = self.params["mesh"]["boundary_condition"][:2]
-
-        for bc in (bc_x, bc_y):
-            if bc not in [
-                "periodic",
-                "reflective",
-                "axis",
-                "outflow",
-                "wall",
-                "driven",
-            ]:
-                raise ValueError(f"unknown boundary condition: '{bc}'")
-
-        if self.params["physics"]["magnetic"]:
-            for bc in (bc_x, bc_y):
-                if bc not in ["periodic", "outflow", "axis", "wall", "driven"]:
-                    raise NotImplementedError(
-                        f"'{bc}' boundaries are not yet implemented for "
-                        "magnetic=True (use 'periodic' or 'outflow')"
-                    )
-
-        if bc_y == "axis":
-            raise ValueError(
-                "the 'axis' boundary condition only applies to dimension 0"
-            )
-
-        if self.is_cylindrical:
-            if self.origin[0] < 0.0:
-                raise ValueError("cylindrical geometry requires origin[0] >= 0")
-            if self.origin[0] == 0.0 and bc_x != "axis":
-                raise ValueError(
-                    "a cylindrical domain reaching R=0 requires "
-                    "boundary_condition[0] == 'axis'"
-                )
-            if self.origin[0] > 0.0 and bc_x == "axis":
-                raise ValueError(
-                    "the 'axis' boundary condition requires origin[0] == 0"
-                )
-            for physics in ["gravity", "quantum"]:
-                if self.params["physics"][physics]:
-                    raise NotImplementedError(
-                        f"'{physics}' is not yet implemented for cylindrical geometry."
-                    )
-        elif bc_x == "axis":
-            raise ValueError(
-                "the 'axis' boundary condition requires cylindrical geometry"
-            )
-
-        if self.params["physics"]["rotation"]:
-            if not self.params["physics"]["hydro"]:
-                raise ValueError("'rotation' requires hydro")
-            if not (self.is_cylindrical or self.params["physics"]["magnetic"]):
-                raise ValueError(
-                    "'rotation' requires cylindrical geometry or magnetic=True"
-                )
-
-        if self.params["hydro"]["riemann_solver"] not in ["llf", "hlld", "hllc"]:
-            raise ValueError("riemann solver does not exist")
-
-        if (
-            self.params["hydro"]["riemann_solver"] == "hlld"
-            and not self.params["physics"]["magnetic"]
-        ):
-            raise ValueError("'hlld' riemann solver only exists for magnetic=True")
-
-        if (
-            self.params["hydro"]["riemann_solver"] == "hllc"
-            and self.params["physics"]["magnetic"]
-        ):
-            raise ValueError("'hllc' riemann solver only exists for magnetic=False")
-
-        if (
-            self.params["mesh"]["boundary_condition"][0] != "periodic"
-            or self.params["mesh"]["boundary_condition"][1] != "periodic"
-        ):
-            if self.params["physics"]["quantum"]:
-                raise NotImplementedError(
-                    "Quantum only implemented for periodic boundary conditions."
-                )
-            if self.params["physics"]["gravity"]:
-                raise NotImplementedError(
-                    "Gravity only implemented for periodic boundary conditions."
-                )
-
-        if (
-            self.params["output"]["save"]
-            and self.params["time"]["num_timesteps"] > 0
-            and self.params["time"]["num_timesteps"]
-            % self.params["output"]["num_checkpoints"]
-            != 0
-        ):
-            raise ValueError("'num_checkpoints' must divide 'num_timesteps'")
+        validate_params(self._params)
 
         # print info
         if jax.process_index() == 0:
@@ -170,6 +74,9 @@ class Simulation:
 
         # functions
         self.external_potential = None
+        self.driven_boundary = None
+
+        self._advance_cache = None
 
     @property
     def resolution(self):
@@ -263,12 +170,26 @@ class Simulation:
         Ly = self.box_size[1]
         nx = self.resolution[0]
         ny = self.resolution[1]
-        kx_lin = (2.0 * jnp.pi / Lx) * jnp.arange(-nx / 2, nx / 2)
-        ky_lin = (2.0 * jnp.pi / Ly) * jnp.arange(-ny / 2, ny / 2)
+        kx_lin = 2.0 * jnp.pi * jnp.fft.fftfreq(nx, d=Lx / nx)
+        ky_lin = 2.0 * jnp.pi * jnp.fft.fftfreq(ny, d=Ly / ny)
         kx, ky = jnp.meshgrid(kx_lin, ky_lin, indexing="ij")
-        kx = jnp.fft.ifftshift(kx)
-        ky = jnp.fft.ifftshift(ky)
         return kx, ky
+
+    @property
+    def _hydro_keys(self):
+        """
+        Return the map from state keys to the field names of the hydro solvers
+        """
+        physics = self.params["physics"]
+        v_out, b_out = self.out_of_plane_keys
+        keys = {"rho": "rho", "vx": "vx", "vy": "vy", "P": "P"}
+        if physics["magnetic"]:
+            keys.update(bx="bx", by="by")
+        if physics["rotation"]:
+            keys[v_out] = "vz"
+            if physics["magnetic"]:
+                keys[b_out] = "bz"
+        return keys
 
     def _calc_grav_potential(self, state, k_sq, G, use_quantum, use_hydro):
         rho_tot = 0.0
@@ -295,6 +216,185 @@ class Simulation:
             self.params["physics"]["hydro"],
         )
 
+    def _get_advance(self):
+        """
+        Return the jit-compiled advance function, rebuilding it only when the
+        parameters or the user-supplied functions have changed.
+        """
+        key = (
+            json.dumps(self.params, sort_keys=True),
+            self.external_potential,
+            self.driven_boundary,
+        )
+        if self._advance_cache is None or self._advance_cache[0] != key:
+            self._advance_cache = (key, jax.jit(self._build_advance()))
+        return self._advance_cache[1]
+
+    def _build_advance(self):
+        """
+        Build the function advance(state, t_target), which evolves the state up
+        to t_target with adaptive timesteps, or else by a fixed number of
+        timesteps (all of them, or those between two checkpoints).
+        """
+
+        # Simulation parameters
+        Lx = self.box_size[0]
+        Ly = self.box_size[1]
+        nx = self.resolution[0]
+        ny = self.resolution[1]
+        dx = Lx / nx
+        dy = Ly / ny
+        nt = self.params["time"]["num_timesteps"]
+        t_span = self.params["time"]["span"]
+        bc_x = self.params["mesh"]["boundary_condition"][0]
+        bc_y = self.params["mesh"]["boundary_condition"][1]
+        save = self.params["output"]["save"]
+        num_checkpoints = self.params["output"]["num_checkpoints"]
+
+        use_adaptive_timesteps = nt < 1
+        if not use_adaptive_timesteps:
+            dt_ref = t_span / nt
+            num_steps = nt // num_checkpoints if save else nt
+
+        x_has_ghosts = bc_x != "periodic"
+        y_has_ghosts = bc_y != "periodic"
+
+        # Physics flags
+        use_hydro = self.params["physics"]["hydro"]
+        use_magnetic = self.params["physics"]["magnetic"]
+        use_quantum = self.params["physics"]["quantum"]
+        use_gravity = self.params["physics"]["gravity"]
+        use_external_potential = self.params["physics"]["external_potential"]
+
+        # constants
+        G = constants["gravitational_constant"]
+
+        # physics variables
+        gamma = self.params["hydro"]["eos"]["gamma"]
+        cfl = self.params["hydro"]["cfl"]
+        riemann_solver = self.params["hydro"]["riemann_solver"]
+        slope_limiting = self.params["hydro"]["slope_limiting"]
+
+        m_per_hbar = 1.0  # XXX
+
+        if use_magnetic:
+            hydro_fluxes, hydro_timestep = hydro_mhd2d_fluxes, hydro_mhd2d_timestep
+        else:
+            hydro_fluxes, hydro_timestep = hydro_euler2d_fluxes, hydro_euler2d_timestep
+
+        hydro_keys = self._hydro_keys
+        external_potential = self.external_potential
+        driven_boundary = self.driven_boundary
+
+        def to_hydro(fields):
+            return {h: fields[k] for k, h in hydro_keys.items()}
+
+        def from_hydro(state, W):
+            return {**state, **{k: W[h] for k, h in hydro_keys.items()}}
+
+        def driven_ghosts(state, axis, bc):
+            return to_hydro(driven_boundary(state, axis)) if bc == "driven" else None
+
+        def advance(state, t_target):
+            # mesh metric factors: 'geom' on the bare grid, 'geom_work' on the
+            # ghost-extended grid the flux routine operates on
+            geom = get_geometry(
+                self.geometry, self.box_size, self.resolution, r_min=self.origin[0]
+            )
+            geom_work = get_geometry(
+                self.geometry,
+                self.box_size,
+                self.resolution,
+                num_ghost_x=1 if x_has_ghosts else 0,
+                r_min=self.origin[0],
+            )
+            kx, ky = self.kgrid
+            k_sq = kx**2 + ky**2
+            if use_external_potential:
+                V_ext = external_potential(*self.mesh)
+
+            def get_timestep(state):
+                dt = jnp.inf
+                if use_hydro:
+                    dt_hydro = hydro_timestep(to_hydro(state), gamma, dx, dy)
+                    dt = jnp.minimum(dt, cfl * dt_hydro)
+                if use_quantum:
+                    dt_quantum = quantum_timestep(m_per_hbar, dx, dy)
+                    dt = jnp.minimum(dt, dt_quantum)
+                dt = jnp.minimum(dt, t_target - state["t"])
+                return dt
+
+            def kick(state, dt):
+                if not (use_gravity or use_external_potential):
+                    return state
+                state = dict(state)
+
+                if use_gravity:
+                    V = self._calc_grav_potential(
+                        state, k_sq, G, use_quantum, use_hydro
+                    )
+                    if use_external_potential:
+                        V = V + V_ext
+                else:
+                    V = V_ext
+
+                if use_quantum:
+                    state["psi"] = quantum_kick(state["psi"], V, m_per_hbar, dt)
+                if use_hydro:
+                    ax, ay = get_acceleration(
+                        V, kx, ky, dx, dy, x_has_ghosts, y_has_ghosts
+                    )
+                    W = hydro_euler2d_accelerate(
+                        to_hydro(state), ax, ay, gamma, geom, dt
+                    )
+                    state = from_hydro(state, W)
+                return state
+
+            def drift(state, dt):
+                state = dict(state)
+                if use_quantum:
+                    state["psi"] = quantum_drift(state["psi"], k_sq, m_per_hbar, dt)
+                if use_hydro:
+                    W = hydro_fluxes(
+                        to_hydro(state),
+                        geom_work,
+                        dt,
+                        gamma=gamma,
+                        riemann_solver=riemann_solver,
+                        slope_limiting=slope_limiting,
+                        bc_x=bc_x,
+                        bc_y=bc_y,
+                        ghost_x=driven_ghosts(state, 0, bc_x),
+                        ghost_y=driven_ghosts(state, 1, bc_y),
+                    )
+                    state = from_hydro(state, W)
+                return state
+
+            def step(state):
+                dt = get_timestep(state) if use_adaptive_timesteps else dt_ref
+
+                # kick-drift-kick
+                state = kick(state, 0.5 * dt)
+                state = drift(state, dt)
+                state = kick(state, 0.5 * dt)
+
+                return {
+                    **state,
+                    "t": state["t"] + dt,
+                    "steps_taken": state["steps_taken"] + 1,
+                }
+
+            if use_adaptive_timesteps:
+                return jax.lax.while_loop(
+                    lambda state: state["t"] < t_target * (1.0 - 1e-10), step, state
+                )
+            state, _ = jax.lax.scan(
+                lambda state, _: (step(state), None), state, xs=None, length=num_steps
+            )
+            return state
+
+        return advance
+
     def _evolve(self, state):
         """
         This function evolves the simulation state according to the simulation parameters/physics.
@@ -310,292 +410,39 @@ class Simulation:
           The evolved state of the simulation.
         """
 
-        # Simulation parameters
-        Lx = self.box_size[0]
-        Ly = self.box_size[1]
-        nx = self.resolution[0]
-        ny = self.resolution[1]
-        dx = Lx / nx
-        dy = Ly / ny
+        bcs = self.params["mesh"]["boundary_condition"]
+        if "driven" in bcs and self.driven_boundary is None:
+            raise ValueError(
+                "a 'driven' boundary condition requires sim.driven_boundary"
+            )
+
         nt = self.params["time"]["num_timesteps"]
         t_span = self.params["time"]["span"]
-        bc_x = self.params["mesh"]["boundary_condition"][0]
-        bc_y = self.params["mesh"]["boundary_condition"][1]
+        save = self.params["output"]["save"]
+        num_chunks = self.params["output"]["num_checkpoints"] if save else 1
 
-        use_adaptive_timesteps = nt < 1
-        dt_ref = jnp.nan if use_adaptive_timesteps else t_span / nt
-
-        # the cylindrical axis is a reflecting boundary with an extra twist:
-        # the azimuthal velocity reverses sense through R=0
-        x_has_ghosts = bc_x != "periodic"
-        y_has_ghosts = bc_y != "periodic"
-
-        # mesh metric factors: 'geom' on the bare grid, 'geom_work' on the
-        # ghost-extended grid the flux routine operates on
-        r_min = self.origin[0]
-        geom = get_geometry(self.geometry, self.box_size, self.resolution, r_min=r_min)
-        geom_work = get_geometry(
-            self.geometry,
-            self.box_size,
-            self.resolution,
-            num_ghost_x=1 if x_has_ghosts else 0,
-            r_min=r_min,
-        )
-
-        # Physics flags
-        use_hydro = self.params["physics"]["hydro"]
-        use_magnetic = self.params["physics"]["magnetic"]
-        use_quantum = self.params["physics"]["quantum"]
-        use_gravity = self.params["physics"]["gravity"]
-        use_rotation = self.params["physics"]["rotation"]
-        v_out, b_out = self.out_of_plane_keys
-        use_mhd_out = use_rotation and use_magnetic
-        use_external_potential = self.params["physics"]["external_potential"]
-
-        # constants
-        G = constants["gravitational_constant"]
-
-        # physics variables
-        gamma = self.params["hydro"]["eos"]["gamma"]
-        cfl = self.params["hydro"]["cfl"]
-        riemann_solver_type = self.params["hydro"]["riemann_solver"]
-        use_slope_limiting = self.params["hydro"]["slope_limiting"]
-
-        m_per_hbar = 1.0  # XXX
-
-        # Precompute Fourier space variables
-        k_sq = None
-        if use_gravity or use_quantum:
-            kx, ky = self.kgrid
-            k_sq = kx**2 + ky**2
+        advance = self._get_advance()
 
         # Checkpointer
-        save = self.params["output"]["save"]
-        num_checkpoints = self.params["output"]["num_checkpoints"]
         if save:
             checkpoint_dir = os.path.join(os.getcwd(), self.params["output"]["path"])
-            path = os.path.join(os.getcwd(), checkpoint_dir)
             if jax.process_index() == 0:
-                path = ocp.test_utils.erase_and_create_empty(checkpoint_dir)
-
-        # Build the carry:
-        carry = (state, k_sq, jnp.asarray(t_span))
-
-        def _get_timestep(state, t_target):
-            dt = jnp.inf
-            if use_hydro:
-                if use_magnetic:
-                    dt_hydro = hydro_mhd2d_timestep(
-                        state["rho"],
-                        state["vx"],
-                        state["vy"],
-                        state["P"],
-                        state["bx"],
-                        state["by"],
-                        gamma,
-                        dx,
-                        dy,
-                        state[v_out] if use_mhd_out else None,
-                        state[b_out] if use_mhd_out else None,
-                    )
-                else:
-                    dt_hydro = hydro_euler2d_timestep(
-                        state["rho"],
-                        state["vx"],
-                        state["vy"],
-                        state["P"],
-                        gamma,
-                        dx,
-                        dy,
-                    )
-                dt = jnp.minimum(dt, cfl * dt_hydro)
-            if use_quantum:
-                dt_quantum = quantum_timestep(m_per_hbar, dx, dy)
-                dt = jnp.minimum(dt, dt_quantum)
-            dt = jnp.minimum(dt, t_target - state["t"])
-            return dt
-
-        def _kick(state, k_sq, dt):
-            # Kick (half-step)
-
-            # update potential
-            if use_gravity and use_external_potential:
-                xx, yy = self.mesh
-                V = self._calc_grav_potential(
-                    state, k_sq, G, use_quantum, use_hydro
-                ) + self.external_potential(xx, yy)
-            elif use_gravity:
-                V = self._calc_grav_potential(state, k_sq, G, use_quantum, use_hydro)
-            elif use_external_potential:
-                xx, yy = self.mesh
-                V = self.external_potential(xx, yy)
-
-            # apply
-            if use_gravity or use_external_potential:
-                if use_quantum:
-                    state["psi"] = quantum_kick(state["psi"], V, m_per_hbar, dt)
-                if use_hydro:
-                    if use_magnetic:
-                        raise NotImplementedError("implement me.")
-                    kx, ky = self.kgrid
-                    ax, ay = get_acceleration(
-                        V, kx, ky, dx, dy, x_has_ghosts, y_has_ghosts
-                    )
-                    state["vx"], state["vy"], state["P"] = hydro_euler2d_accelerate(
-                        state["rho"],
-                        state["vx"],
-                        state["vy"],
-                        state["P"],
-                        state[v_out] if use_rotation else None,
-                        ax,
-                        ay,
-                        gamma,
-                        geom,
-                        dt,
-                    )
-
-        def _drift(state, k_sq, dt):
-            # Drift (full-step)
-
-            if use_quantum:
-                state["psi"] = quantum_drift(state["psi"], k_sq, m_per_hbar, dt)
-
-            if use_hydro:
-                if use_magnetic:
-                    (
-                        rho_new,
-                        vx_new,
-                        vy_new,
-                        P_new,
-                        bx_new,
-                        by_new,
-                        vout_new,
-                        bout_new,
-                    ) = hydro_mhd2d_fluxes(
-                        state["rho"],
-                        state["vx"],
-                        state["vy"],
-                        state["P"],
-                        state["bx"],
-                        state["by"],
-                        gamma,
-                        geom_work,
-                        dt,
-                        riemann_solver_type,
-                        use_slope_limiting,
-                        bc_x,
-                        bc_y,
-                        state[v_out] if use_mhd_out else None,
-                        state[b_out] if use_mhd_out else None,
-                        geom,
-                    )
-                    state["rho"] = rho_new
-                    state["vx"] = vx_new
-                    state["vy"] = vy_new
-                    state["P"] = P_new
-                    state["bx"] = bx_new
-                    state["by"] = by_new
-                    if use_mhd_out:
-                        state[v_out] = vout_new
-                        state[b_out] = bout_new
-                else:
-                    rho_new, vx_new, vy_new, P_new, vphi_new = hydro_euler2d_fluxes(
-                        state["rho"],
-                        state["vx"],
-                        state["vy"],
-                        state["P"],
-                        state[v_out] if use_rotation else None,
-                        gamma,
-                        geom_work,
-                        dt,
-                        riemann_solver_type,
-                        use_slope_limiting,
-                        bc_x,
-                        bc_y,
-                    )
-                    state["rho"] = rho_new
-                    state["vx"] = vx_new
-                    state["vy"] = vy_new
-                    state["P"] = P_new
-                    if use_rotation:
-                        state[v_out] = vphi_new
-
-        def step_fn(carry):
-            """
-            Pure step function: advances state by one timestep.
-            """
-            state, k_sq, t_target = carry
-
-            # Get the timestep
-            dt = dt_ref
-            if use_adaptive_timesteps:
-                dt = _get_timestep(state, t_target)
-
-            # kick-drift-kick
-            _kick(state, k_sq, 0.5 * dt)
-            _drift(state, k_sq, dt)
-            _kick(state, k_sq, 0.5 * dt)
-
-            # Update time
-            state["t"] = state["t"] + dt
-
-            # Update diagnostics
-            state["steps_taken"] = state["steps_taken"] + 1
-
-            return (state, k_sq, t_target)
-
-        # Run the entire loop as a single JIT-compiled function
-        def run_loop(carry):
-            if use_adaptive_timesteps:
-
-                def cond_fn(carry):
-                    state, _, t_target = carry
-                    return state["t"] < t_target * (1.0 - 1e-10)
-
-                def run_until(carry, t_target):
-                    state, k_sq, _ = carry
-                    return jax.lax.while_loop(cond_fn, step_fn, (state, k_sq, t_target))
-
-                if save:
-                    for i in range(1, num_checkpoints + 1):
-                        t_target = jnp.asarray(t_span * i / num_checkpoints)
-                        carry = run_until(carry, t_target)
-                        state, _, _ = carry
-                        jax.block_until_ready(state)
-                        # save state
-                        plot_sim(state, checkpoint_dir, i, self.params)
-                else:
-                    carry = run_until(carry, carry[2])
-            else:
-
-                def step_fn_stacked(carry, _):
-                    # Returns new carry and None (no stacked outputs) for jax.lax.scan()
-                    return step_fn(carry), None
-
-                if save:
-                    nt_sub = round(nt / num_checkpoints)
-                    for i in range(1, num_checkpoints + 1):
-                        carry, _ = jax.lax.scan(
-                            step_fn_stacked, carry, xs=None, length=nt_sub
-                        )
-                        state, _, _ = carry
-                        jax.block_until_ready(state)
-                        # save state
-                        plot_sim(state, checkpoint_dir, i, self.params)
-                else:
-                    carry, _ = jax.lax.scan(step_fn_stacked, carry, xs=None, length=nt)
-            return carry
+                ocp.test_utils.erase_and_create_empty(checkpoint_dir)
 
         # save initial state
         if jax.process_index() == 0:
             print(f"Starting simulation (res={self.resolution}, nt={nt}) ...")
-        if self.params["output"]["save"]:
+        if save:
             with open(os.path.join(checkpoint_dir, "params.json"), "w") as f:
                 json.dump(self.params, f, indent=2)
             plot_sim(state, checkpoint_dir, 0, self.params)
 
         # Simulation Main Loop
-        state, _, _ = run_loop(carry)
+        for i in range(1, num_chunks + 1):
+            state = advance(state, jnp.asarray(t_span * i / num_chunks))
+            if save:
+                jax.block_until_ready(state)
+                plot_sim(state, checkpoint_dir, i, self.params)
 
         return state
 

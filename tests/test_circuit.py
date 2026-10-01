@@ -90,7 +90,6 @@ def test_coupled_step_handles_several_ports():
 
 def _driven_run(bphi_drive, n_steps):
     nR, nz, LR, Lz, r_min = 32, 8, 0.12, 0.6, 0.08
-    geom = get_geometry("cylindrical", [LR, Lz], [nR, nz], r_min=r_min)
     geom_work = get_geometry(
         "cylindrical", [LR, Lz], [nR, nz], num_ghost_x=1, r_min=r_min
     )
@@ -99,8 +98,16 @@ def _driven_run(bphi_drive, n_steps):
     p_gas, b_z = 1.0, 0.5
     p_tot = p_gas + 0.5 * b_z**2
 
-    rho, vx, vy, P = one, 0 * one, 0 * one, p_tot * one
-    bx, by, vz, bz = 0 * one, b_z * one, 0 * one, 0 * one
+    W = {
+        "rho": one,
+        "vx": 0 * one,
+        "vy": 0 * one,
+        "P": p_tot * one,
+        "bx": 0 * one,
+        "by": b_z * one,
+        "vz": 0 * one,
+        "bz": 0 * one,
+    }
     for _ in range(n_steps):
         ghost = {
             "rho": (edge, edge),
@@ -113,26 +120,17 @@ def _driven_run(bphi_drive, n_steps):
             "vz": (0 * edge, 0 * edge),
             "bz": (0 * edge, bphi_drive * edge),
         }
-        rho, vx, vy, P, bx, by, vz, bz = hydro_mhd2d_fluxes(
-            rho,
-            vx,
-            vy,
-            P,
-            bx,
-            by,
-            5.0 / 3.0,
+        W = hydro_mhd2d_fluxes(
+            W,
             geom_work,
             2.0e-4,
-            "hlld",
-            True,
-            "driven",
-            "periodic",
-            vz,
-            bz,
-            geom,
+            gamma=5.0 / 3.0,
+            riemann_solver="hlld",
+            slope_limiting=True,
+            bc_x="driven",
             ghost_x=ghost,
         )
-    return rho, vx, bz
+    return W["rho"], W["vx"], W["bz"]
 
 
 def test_driven_boundary_is_quiet_when_it_matches_the_interior():

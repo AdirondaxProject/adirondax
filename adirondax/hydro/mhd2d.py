@@ -1,98 +1,76 @@
 import jax.numpy as jnp
 
+from .boundary import add_ghost_cells, set_ghost_gradients, strip_ghosts
 from .common2d import (
     apply_fluxes,
-    extrapolate_to_face,
+    face_states,
     get_avg,
     get_curl,
-    get_gradient,
-    pad_edge,
-    slope_limit,
-    strip_ghosts,
-    zero_ghost_gradients,
+    get_gradients,
+    swap_xy,
 )
+from .geometry import geom_strip
 
 # Pure functions for 2D magnetohydrodynamics
 
 
-def get_conserved(rho, vx, vy, P, Bx, By, gamma, vol, vz=None, Bz=None, r=None):
+def get_conserved(W, gamma, geom):
     """
     Calculate the conserved variable from the primitive
     """
+    rho, vx, vy, P, Bx, By = (W[k] for k in ("rho", "vx", "vy", "P", "Bx", "By"))
+    vol = geom["vol"]
+    r = geom["r"]
+
     v_sq = vx**2 + vy**2
     B_sq = Bx**2 + By**2
-    if vz is not None:
-        v_sq = v_sq + vz**2
-        B_sq = B_sq + Bz**2
+    if "vz" in W:
+        v_sq = v_sq + W["vz"] ** 2
+        B_sq = B_sq + W["Bz"] ** 2
 
-    Mass = rho * vol
-    Momx = rho * vx * vol
-    Momy = rho * vy * vol
-    Energy = ((P - 0.5 * B_sq) / (gamma - 1.0) + 0.5 * rho * v_sq + 0.5 * B_sq) * vol
+    U = {
+        "mass": rho * vol,
+        "momx": rho * vx * vol,
+        "momy": rho * vy * vol,
+        "energy": ((P - 0.5 * B_sq) / (gamma - 1.0) + 0.5 * rho * v_sq + 0.5 * B_sq)
+        * vol,
+    }
     # in cylindrical geometry the out-of-plane momentum is carried as angular
     # momentum rho*R*vphi, whose flux is free of geometric source terms
-    if vz is None:
-        Momz = None
-    elif r is None:
-        Momz = rho * vz * vol
-    else:
-        Momz = rho * r * vz * vol
+    if "vz" in W:
+        U["momz"] = rho * W["vz"] * vol if r is None else rho * r * W["vz"] * vol
+        U["Bz"] = W["Bz"] * (geom["dx"] * geom["dy"])
 
-    return Mass, Momx, Momy, Energy, Momz
+    return U
 
 
-def get_primitive(
-    Mass, Momx, Momy, Energy, Bx, By, gamma, vol, Momz=None, Bz=None, r=None
-):
+def get_primitive(U, Bx, By, gamma, geom):
     """
     Calculate the primitive variable from the conservative
     """
-    rho = Mass / vol
-    vx = Momx / rho / vol
-    vy = Momy / rho / vol
+    vol = geom["vol"]
+    r = geom["r"]
+
+    rho = U["mass"] / vol
+    vx = U["momx"] / rho / vol
+    vy = U["momy"] / rho / vol
+    W = {"rho": rho, "vx": vx, "vy": vy}
 
     v_sq = vx**2 + vy**2
     B_sq = Bx**2 + By**2
-    if Momz is None:
-        vz = None
-    else:
-        vz = Momz / (Mass * r) if r is not None else Momz / rho / vol
-        v_sq = v_sq + vz**2
-        B_sq = B_sq + Bz**2
+    if "momz" in U:
+        W["vz"] = (
+            U["momz"] / (U["mass"] * r) if r is not None else U["momz"] / rho / vol
+        )
+        W["bz"] = U["Bz"] / (geom["dx"] * geom["dy"])
+        v_sq = v_sq + W["vz"] ** 2
+        B_sq = B_sq + W["bz"] ** 2
 
-    P_tot = (Energy / vol - 0.5 * rho * v_sq - 0.5 * B_sq) * (gamma - 1.0) + 0.5 * B_sq
+    W["P"] = (U["energy"] / vol - 0.5 * rho * v_sq - 0.5 * B_sq) * (
+        gamma - 1.0
+    ) + 0.5 * B_sq
 
-    return rho, vx, vy, P_tot, vz
-
-
-def _pad_driven(f, axis, lo, hi):
-    """Pad a field with caller-supplied ghost values on each side of an axis"""
-
-    return jnp.concatenate((lo, f, hi), axis=axis)
-
-
-def _ghost_parity(f_d, axis, is_odd):
-    """
-    Mirror the normal gradient into the ghost cells.
-    """
-
-    sign = 1.0 if is_odd else -1.0
-    if axis == 0:
-        f_d = f_d.at[0, :].set(sign * f_d[1, :])
-        f_d = f_d.at[-1, :].set(sign * f_d[-2, :])
-    else:
-        f_d = f_d.at[:, 0].set(sign * f_d[:, 1])
-        f_d = f_d.at[:, -1].set(sign * f_d[:, -2])
-    return f_d
-
-
-def _mirror(f, axis, sign_lo, sign_hi):
-    """Pad a field with one mirrored ghost cell on each side of the given axis"""
-
-    if axis == 0:
-        return jnp.concatenate((sign_lo * f[0:1, :], f, sign_hi * f[-1:, :]), axis=0)
-    else:
-        return jnp.concatenate((sign_lo * f[:, 0:1], f, sign_hi * f[:, -1:]), axis=1)
+    return W
 
 
 def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt, geom=None):
@@ -122,35 +100,34 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt, geom=None):
     return bx_new, by_new
 
 
+def _flux_dict(flux_Mass, flux_Momx, flux_Momt, flux_Energy, flux_Bt):
+    flux = {
+        "mass": flux_Mass,
+        "momx": flux_Momx,
+        "momy": flux_Momt[0],
+        "energy": flux_Energy,
+        "By": flux_Bt[0],
+    }
+    if len(flux_Momt) > 1:
+        flux["momz"] = flux_Momt[1]
+        flux["Bz"] = flux_Bt[1]
+    return flux
+
+
 # local Lax-Friedrichs/Rusanov
-def get_flux_llf(
-    rho_L,
-    rho_R,
-    vx_L,
-    vx_R,
-    vy_L,
-    vy_R,
-    P_L,
-    P_R,
-    Bx_L,
-    Bx_R,
-    By_L,
-    By_R,
-    vz_L,
-    vz_R,
-    Bz_L,
-    Bz_R,
-    gamma,
-):
+def get_flux_llf(WL, WR, gamma):
     """
     Calculate fluxes between 2 states with local Lax-Friedrichs/Rusanov rule
     """
 
-    has_out = vz_L is not None
-    vt_L = (vy_L, vz_L) if has_out else (vy_L,)
-    vt_R = (vy_R, vz_R) if has_out else (vy_R,)
-    Bt_L = (By_L, Bz_L) if has_out else (By_L,)
-    Bt_R = (By_R, Bz_R) if has_out else (By_R,)
+    rho_L, vx_L, P_L, Bx_L = WL["rho"], WL["vx"], WL["P"], WL["Bx"]
+    rho_R, vx_R, P_R, Bx_R = WR["rho"], WR["vx"], WR["P"], WR["Bx"]
+
+    has_out = "vz" in WL
+    vt_L = (WL["vy"], WL["vz"]) if has_out else (WL["vy"],)
+    vt_R = (WR["vy"], WR["vz"]) if has_out else (WR["vy"],)
+    Bt_L = (WL["By"], WL["Bz"]) if has_out else (WL["By"],)
+    Bt_R = (WR["By"], WR["Bz"]) if has_out else (WR["By"],)
 
     def dot(a, b):
         return sum(ai * bi for ai, bi in zip(a, b))
@@ -222,51 +199,25 @@ def get_flux_llf(
     flux_Energy -= C * 0.5 * (en_R - en_L)
     flux_Bt = tuple(f - C * 0.5 * (b - a) for f, a, b in zip(flux_Bt, Bt_L, Bt_R))
 
-    flux_Momz = flux_Momt[1] if has_out else None
-    flux_Bz = flux_Bt[1] if has_out else None
-
-    return (
-        flux_Mass,
-        flux_Momx,
-        flux_Momt[0],
-        flux_Energy,
-        flux_Bt[0],
-        flux_Momz,
-        flux_Bz,
-    )
+    return _flux_dict(flux_Mass, flux_Momx, flux_Momt, flux_Energy, flux_Bt)
 
 
 # HLLD Riemann solver
-def get_flux_hlld(
-    rho_L,
-    rho_R,
-    vx_L,
-    vx_R,
-    vy_L,
-    vy_R,
-    P_L,
-    P_R,
-    Bx_L,
-    Bx_R,
-    By_L,
-    By_R,
-    vz_L,
-    vz_R,
-    Bz_L,
-    Bz_R,
-    gamma,
-):
+def get_flux_hlld(WL, WR, gamma):
     """
     Calculate fluxes between 2 states with HLLD Riemann solver
     """
 
     epsilon = 1.0e-8
 
-    has_out = vz_L is not None
-    vt_L = (vy_L, vz_L) if has_out else (vy_L,)
-    vt_R = (vy_R, vz_R) if has_out else (vy_R,)
-    Bt_L = (By_L, Bz_L) if has_out else (By_L,)
-    Bt_R = (By_R, Bz_R) if has_out else (By_R,)
+    rho_L, vx_L, P_L, Bx_L = WL["rho"], WL["vx"], WL["P"], WL["Bx"]
+    rho_R, vx_R, P_R, Bx_R = WR["rho"], WR["vx"], WR["P"], WR["Bx"]
+
+    has_out = "vz" in WL
+    vt_L = (WL["vy"], WL["vz"]) if has_out else (WL["vy"],)
+    vt_R = (WR["vy"], WR["vz"]) if has_out else (WR["vy"],)
+    Bt_L = (WL["By"], WL["Bz"]) if has_out else (WL["By"],)
+    Bt_R = (WR["By"], WR["Bz"]) if has_out else (WR["By"],)
 
     def dot(a, b):
         return sum(ai * bi for ai, bi in zip(a, b))
@@ -506,77 +457,29 @@ def get_flux_hlld(
         )
     )
 
-    flux_Momz = flux_Momt[1] if has_out else None
-    flux_Bz = flux_Bt[1] if has_out else None
-
-    return (
-        flux_Mass,
-        flux_Momx,
-        flux_Momt[0],
-        flux_Energy,
-        flux_Bt[0],
-        flux_Momz,
-        flux_Bz,
-    )
+    return _flux_dict(flux_Mass, flux_Momx, flux_Momt, flux_Energy, flux_Bt)
 
 
-def get_flux(
-    rho_L,
-    rho_R,
-    vx_L,
-    vx_R,
-    vy_L,
-    vy_R,
-    P_L,
-    P_R,
-    Bx_L,
-    Bx_R,
-    By_L,
-    By_R,
-    vz_L,
-    vz_R,
-    Bz_L,
-    Bz_R,
-    gamma,
-    riemann_solver_type,
-):
-    args = (
-        rho_L,
-        rho_R,
-        vx_L,
-        vx_R,
-        vy_L,
-        vy_R,
-        P_L,
-        P_R,
-        Bx_L,
-        Bx_R,
-        By_L,
-        By_R,
-        vz_L,
-        vz_R,
-        Bz_L,
-        Bz_R,
-        gamma,
-    )
-    if riemann_solver_type == "hlld":
-        return get_flux_hlld(*args)
+def get_flux(WL, WR, gamma, riemann_solver):
+    if riemann_solver == "hlld":
+        return get_flux_hlld(WL, WR, gamma)
     else:
         # default
-        return get_flux_llf(*args)
+        return get_flux_llf(WL, WR, gamma)
 
 
-def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx, dy, vz=None, Bz=None):
+def hydro_mhd2d_timestep(W, gamma, dx, dy):
     """
     Calculate the simulation timestep based on CFL condition
     """
 
-    Bx, By = get_avg(bx, by)
+    rho, vx, vy, P = W["rho"], W["vx"], W["vy"], W["P"]
+    Bx, By = get_avg(W["bx"], W["by"])
     v_sq = vx**2 + vy**2
     B_sq = Bx**2 + By**2
-    if vz is not None:
-        v_sq = v_sq + vz**2
-        B_sq = B_sq + Bz**2
+    if "vz" in W:
+        v_sq = v_sq + W["vz"] ** 2
+        B_sq = B_sq + W["bz"] ** 2
 
     c_s_sq = gamma * (P - 0.5 * B_sq) / rho
     v_a_sq = B_sq / rho
@@ -589,182 +492,75 @@ def hydro_mhd2d_timestep(rho, vx, vy, P, bx, by, gamma, dx, dy, vz=None, Bz=None
 
 
 def hydro_mhd2d_fluxes(
-    rho,
-    vx,
-    vy,
-    P,
-    bx,
-    by,
-    gamma,
+    W,
     geom,
     dt,
-    riemann_solver_type,
-    use_slope_limiting,
+    *,
+    gamma,
+    riemann_solver="llf",
+    slope_limiting=False,
     bc_x="periodic",
     bc_y="periodic",
-    vz=None,
-    bz=None,
-    geom_bare=None,
     ghost_x=None,
     ghost_y=None,
 ):
     """
     Take a simulation timestep
+
+    W holds the primitive fields 'rho', 'vx', 'vy', 'P' (total pressure), the
+    face-centered 'bx', 'by', and, for 2.5D, the out-of-plane 'vz', 'bz'. A
+    'driven' boundary takes its ghost cells from ghost_x/ghost_y, which map
+    each field to its (lo, hi) ghost values.
     """
 
-    use_out_of_plane = vz is not None
     dx = geom["dx"]
     dy = geom["dy"]
     is_cylindrical = geom["is_cylindrical"]
     r = geom["r"]
-    if geom_bare is None:
-        geom_bare = geom
-
+    use_out_of_plane = "vz" in W
     x_has_ghosts = bc_x != "periodic"
     y_has_ghosts = bc_y != "periodic"
 
-    for axis, bc in ((0, bc_x), (1, bc_y)):
-        if bc == "periodic":
-            continue
-        if bc == "outflow":
-            rho, vx, vy, P, bx, by = (
-                pad_edge(f, axis) for f in (rho, vx, vy, P, bx, by)
-            )
-            if use_out_of_plane:
-                vz, bz = (pad_edge(f, axis) for f in (vz, bz))
-        elif bc == "driven":
-            # Ghost values supplied by the caller, e.g. to implement an external driver.
-            ghost = ghost_x if axis == 0 else ghost_y
-            rho, vx, vy, P, bx, by = (
-                _pad_driven(f, axis, *ghost[name])
-                for f, name in zip(
-                    (rho, vx, vy, P, bx, by),
-                    ("rho", "vx", "vy", "P", "bx", "by"),
-                )
-            )
-            if use_out_of_plane:
-                vz = _pad_driven(vz, axis, *ghost["vz"])
-                bz = _pad_driven(bz, axis, *ghost["bz"])
-        elif bc == "wall":
-            # A perfectly conducting wall.
-            rho, vy, P = (_mirror(f, axis, 1.0, 1.0) for f in (rho, vy, P))
-            vx = _mirror(vx, axis, -1.0, -1.0)
-            by = _mirror(by, axis, 1.0, 1.0)
-            bx = jnp.concatenate(
-                (jnp.zeros_like(bx[0:1, :]), bx, jnp.zeros_like(bx[-1:, :])), axis=0
-            )
-            if use_out_of_plane:
-                vz = _mirror(vz, axis, 1.0, 1.0)
-                bz = _mirror(bz, axis, 1.0, 1.0)
-        elif bc == "axis":
-            rho, vy, P = (_mirror(f, axis, 1.0, 1.0) for f in (rho, vy, P))
-            vx = _mirror(vx, axis, -1.0, -1.0)
-            by = _mirror(by, axis, 1.0, 1.0)
-            bx = jnp.concatenate(
-                (jnp.zeros_like(bx[0:1, :]), bx, jnp.zeros_like(bx[-1:, :])), axis=0
-            )
-            if use_out_of_plane:
-                vz = _mirror(vz, axis, -1.0, 1.0)
-                bz = _mirror(bz, axis, -1.0, 1.0)
-        else:
-            raise NotImplementedError(
-                f"'{bc}' boundaries are not implemented for magnetic fields"
-            )
+    if x_has_ghosts:
+        W = add_ghost_cells(W, 0, bc_x, ghost_x)
+    if y_has_ghosts:
+        W = add_ghost_cells(W, 1, bc_y, ghost_y)
 
     # get Conserved variables
+    bx, by = W["bx"], W["by"]
     Bx, By = get_avg(bx, by)
-    Mass, Momx, Momy, Energy, Momz = get_conserved(
-        rho, vx, vy, P, Bx, By, gamma, geom["vol"], vz, bz, r
-    )
-    Bz_cons = None if not use_out_of_plane else bz * (dx * dy)
+    Wc = {
+        "rho": W["rho"],
+        "vx": W["vx"],
+        "vy": W["vy"],
+        "P": W["P"],
+        "Bx": Bx,
+        "By": By,
+    }
+    if use_out_of_plane:
+        Wc["vz"], Wc["Bz"] = W["vz"], W["bz"]
+    U = get_conserved(Wc, gamma, geom)
 
     # calculate gradients
-    rho_dx, rho_dy = get_gradient(rho, dx, dy)
-    vx_dx, vx_dy = get_gradient(vx, dx, dy)
-    vy_dx, vy_dy = get_gradient(vy, dx, dy)
-    P_dx, P_dy = get_gradient(P, dx, dy)
-    Bx_dx, Bx_dy = get_gradient(Bx, dx, dy)
-    By_dx, By_dy = get_gradient(By, dx, dy)
-    if use_out_of_plane:
-        vz_dx, vz_dy = get_gradient(vz, dx, dy)
-        Bz_dx, Bz_dy = get_gradient(bz, dx, dy)
+    W_dx, W_dy = get_gradients(Wc, dx, dy, slope_limiting)
+    if x_has_ghosts:
+        W_dx = set_ghost_gradients(W_dx, 0, bc_x)
+    if y_has_ghosts:
+        W_dy = set_ghost_gradients(W_dy, 1, bc_y)
 
-    # slope limit gradients
-    if use_slope_limiting:
-        rho_dx, rho_dy = slope_limit(rho, rho_dx, rho_dy, dx, dy)
-        vx_dx, vx_dy = slope_limit(vx, vx_dx, vx_dy, dx, dy)
-        vy_dx, vy_dy = slope_limit(vy, vy_dx, vy_dy, dx, dy)
-        P_dx, P_dy = slope_limit(P, P_dx, P_dy, dx, dy)
-        Bx_dx, Bx_dy = slope_limit(Bx, Bx_dx, Bx_dy, dx, dy)
-        By_dx, By_dy = slope_limit(By, By_dx, By_dy, dx, dy)
-        if use_out_of_plane:
-            vz_dx, vz_dy = slope_limit(vz, vz_dx, vz_dy, dx, dy)
-            Bz_dx, Bz_dy = slope_limit(bz, Bz_dx, Bz_dy, dx, dy)
-
-    # set ghost cell gradients
-    for axis, has_ghosts in ((0, x_has_ghosts), (1, y_has_ghosts)):
-        if not has_ghosts:
-            continue
-        if axis == 0 and bc_x in ("driven", "wall"):
-            if bc_x == "driven":
-                # the ghost values are data, so flatten the slopes into them
-                rho_dx = zero_ghost_gradients(rho_dx, axis)
-                vx_dx = zero_ghost_gradients(vx_dx, axis)
-                vy_dx = zero_ghost_gradients(vy_dx, axis)
-                P_dx = zero_ghost_gradients(P_dx, axis)
-                Bx_dx = zero_ghost_gradients(Bx_dx, axis)
-                By_dx = zero_ghost_gradients(By_dx, axis)
-                if use_out_of_plane:
-                    vz_dx = zero_ghost_gradients(vz_dx, axis)
-                    Bz_dx = zero_ghost_gradients(Bz_dx, axis)
-            else:
-                rho_dx = _ghost_parity(rho_dx, axis, False)
-                vy_dx = _ghost_parity(vy_dx, axis, False)
-                P_dx = _ghost_parity(P_dx, axis, False)
-                Bx_dx = _ghost_parity(Bx_dx, axis, True)
-                By_dx = _ghost_parity(By_dx, axis, False)
-                vx_dx = _ghost_parity(vx_dx, axis, True)
-                if use_out_of_plane:
-                    vz_dx = _ghost_parity(vz_dx, axis, False)
-                    Bz_dx = _ghost_parity(Bz_dx, axis, False)
-        elif axis == 0 and bc_x == "axis":
-            rho_dx = _ghost_parity(rho_dx, axis, False)
-            vy_dx = _ghost_parity(vy_dx, axis, False)
-            P_dx = _ghost_parity(P_dx, axis, False)
-            Bx_dx = _ghost_parity(Bx_dx, axis, True)
-            By_dx = _ghost_parity(By_dx, axis, False)
-            vx_dx = _ghost_parity(vx_dx, axis, True)
-            if use_out_of_plane:
-                vz_dx = _ghost_parity(vz_dx, axis, True)
-                Bz_dx = _ghost_parity(Bz_dx, axis, True)
-        elif axis == 0:
-            rho_dx = zero_ghost_gradients(rho_dx, axis)
-            vx_dx = zero_ghost_gradients(vx_dx, axis)
-            vy_dx = zero_ghost_gradients(vy_dx, axis)
-            P_dx = zero_ghost_gradients(P_dx, axis)
-            Bx_dx = zero_ghost_gradients(Bx_dx, axis)
-            By_dx = zero_ghost_gradients(By_dx, axis)
-            if use_out_of_plane:
-                vz_dx = zero_ghost_gradients(vz_dx, axis)
-                Bz_dx = zero_ghost_gradients(Bz_dx, axis)
-        else:
-            rho_dy = zero_ghost_gradients(rho_dy, axis)
-            vx_dy = zero_ghost_gradients(vx_dy, axis)
-            vy_dy = zero_ghost_gradients(vy_dy, axis)
-            P_dy = zero_ghost_gradients(P_dy, axis)
-            Bx_dy = zero_ghost_gradients(Bx_dy, axis)
-            By_dy = zero_ghost_gradients(By_dy, axis)
-            if use_out_of_plane:
-                vz_dy = zero_ghost_gradients(vz_dy, axis)
-                Bz_dy = zero_ghost_gradients(Bz_dy, axis)
+    rho, vx, vy, P = Wc["rho"], Wc["vx"], Wc["vy"], Wc["P"]
+    rho_dx, vx_dx, vy_dx, P_dx = (W_dx[k] for k in ("rho", "vx", "vy", "P"))
+    rho_dy, vx_dy, vy_dy, P_dy = (W_dy[k] for k in ("rho", "vx", "vy", "P"))
+    Bx_dx, By_dx, Bx_dy, By_dy = W_dx["Bx"], W_dx["By"], W_dy["Bx"], W_dy["By"]
 
     # extrapolate half-step in time
     div_v = vx_dx + vy_dy
     if is_cylindrical:
         div_v = div_v + vx / r
 
-    rho_prime = rho - 0.5 * dt * (vx * rho_dx + vy * rho_dy + rho * div_v)
-    vx_prime = vx - 0.5 * dt * (
+    Wp = {}
+    Wp["rho"] = rho - 0.5 * dt * (vx * rho_dx + vy * rho_dy + rho * div_v)
+    Wp["vx"] = vx - 0.5 * dt * (
         vx * vx_dx
         + vy * vx_dy
         + (1.0 / rho) * P_dx
@@ -772,7 +568,7 @@ def hydro_mhd2d_fluxes(
         - (By / rho) * Bx_dy
         - (Bx / rho) * By_dy
     )
-    vy_prime = vy - 0.5 * dt * (
+    Wp["vy"] = vy - 0.5 * dt * (
         vx * vy_dx
         + vy * vy_dy
         + (1.0 / rho) * P_dy
@@ -782,8 +578,10 @@ def hydro_mhd2d_fluxes(
     )
     B_sq = Bx**2 + By**2
     if use_out_of_plane:
+        vz, bz = Wc["vz"], Wc["Bz"]
+        vz_dx, vz_dy, Bz_dx, Bz_dy = W_dx["vz"], W_dy["vz"], W_dx["Bz"], W_dy["Bz"]
         B_sq = B_sq + bz**2
-    P_prime = P - 0.5 * dt * (
+    Wp["P"] = P - 0.5 * dt * (
         gamma * (P - 0.5 * B_sq) * div_v
         + By**2 * vx_dx
         - Bx * By * vy_dx
@@ -797,154 +595,73 @@ def hydro_mhd2d_fluxes(
     if use_out_of_plane:
         # the out-of-plane field adds magnetic pressure that resists in-plane
         # compression, and couples to the shear in vz
-        P_prime = P_prime - 0.5 * dt * (
+        Wp["P"] = Wp["P"] - 0.5 * dt * (
             bz**2 * (vx_dx + vy_dy) - bz * Bx * vz_dx - bz * By * vz_dy
         )
 
-    Bx_prime = Bx - 0.5 * dt * (-By * vx_dy + Bx * vy_dy + vy * Bx_dy - vx * By_dy)
-    By_prime = By - 0.5 * dt * (By * vx_dx - Bx * vy_dx - vy * Bx_dx + vx * By_dx)
+    Wp["Bx"] = Bx - 0.5 * dt * (-By * vx_dy + Bx * vy_dy + vy * Bx_dy - vx * By_dy)
+    Wp["By"] = By - 0.5 * dt * (By * vx_dx - Bx * vy_dx - vy * Bx_dx + vx * By_dx)
     if use_out_of_plane:
         # d(vz)/dt = (B.grad) Bz / rho; in cylindrical the azimuthal equation
         # also carries -v_R v_phi / R and +B_R B_phi / (rho R)
-        vz_prime = vz - 0.5 * dt * (
+        Wp["vz"] = vz - 0.5 * dt * (
             vx * vz_dx + vy * vz_dy - (Bx / rho) * Bz_dx - (By / rho) * Bz_dy
         )
         if is_cylindrical:
-            vz_prime = vz_prime - 0.5 * dt * (vx * vz / r - Bx * bz / (rho * r))
+            Wp["vz"] = Wp["vz"] - 0.5 * dt * (vx * vz / r - Bx * bz / (rho * r))
         # d(Bz)/dt = -div(vx Bz - vz Bx, vy Bz - vz By), using div(B) = 0
-        bz_prime = bz - 0.5 * dt * (
+        Wp["Bz"] = bz - 0.5 * dt * (
             vx * Bz_dx + vy * Bz_dy + bz * (vx_dx + vy_dy) - Bx * vz_dx - By * vz_dy
         )
 
-    # extrapolate in space to face centers
-    rho_XL, rho_XR, rho_YL, rho_YR = extrapolate_to_face(
-        rho_prime, rho_dx, rho_dy, dx, dy
-    )
-    vx_XL, vx_XR, vx_YL, vx_YR = extrapolate_to_face(vx_prime, vx_dx, vx_dy, dx, dy)
-    vy_XL, vy_XR, vy_YL, vy_YR = extrapolate_to_face(vy_prime, vy_dx, vy_dy, dx, dy)
-    P_XL, P_XR, P_YL, P_YR = extrapolate_to_face(P_prime, P_dx, P_dy, dx, dy)
-    Bx_XL, Bx_XR, Bx_YL, Bx_YR = extrapolate_to_face(Bx_prime, Bx_dx, Bx_dy, dx, dy)
-    By_XL, By_XR, By_YL, By_YR = extrapolate_to_face(By_prime, By_dx, By_dy, dx, dy)
-    if use_out_of_plane:
-        vz_XL, vz_XR, vz_YL, vz_YR = extrapolate_to_face(vz_prime, vz_dx, vz_dy, dx, dy)
-        Bz_XL, Bz_XR, Bz_YL, Bz_YR = extrapolate_to_face(bz_prime, Bz_dx, Bz_dy, dx, dy)
-    else:
-        vz_XL = vz_XR = vz_YL = vz_YR = None
-        Bz_XL = Bz_XR = Bz_YL = Bz_YR = None
-
-    # compute fluxes
-    (
-        flux_Mass_X,
-        flux_Momx_X,
-        flux_Momy_X,
-        flux_Energy_X,
-        flux_By_X,
-        flux_Momz_X,
-        flux_Bz_X,
-    ) = get_flux(
-        rho_XL,
-        rho_XR,
-        vx_XL,
-        vx_XR,
-        vy_XL,
-        vy_XR,
-        P_XL,
-        P_XR,
-        Bx_XL,
-        Bx_XR,
-        By_XL,
-        By_XR,
-        vz_XL,
-        vz_XR,
-        Bz_XL,
-        Bz_XR,
-        gamma,
-        riemann_solver_type,
-    )
-    (
-        flux_Mass_Y,
-        flux_Momy_Y,
-        flux_Momx_Y,
-        flux_Energy_Y,
-        flux_Bx_Y,
-        flux_Momz_Y,
-        flux_Bz_Y,
-    ) = get_flux(
-        rho_YL,
-        rho_YR,
-        vy_YL,
-        vy_YR,
-        vx_YL,
-        vx_YR,
-        P_YL,
-        P_YR,
-        By_YL,
-        By_YR,
-        Bx_YL,
-        Bx_YR,
-        vz_YL,
-        vz_YR,
-        Bz_YL,
-        Bz_YR,
-        gamma,
-        riemann_solver_type,
-    )
+    # extrapolate in space to face centers, and compute fluxes
+    W_XL, W_XR, W_YL, W_YR = face_states(Wp, W_dx, W_dy, dx, dy)
+    flux_X = get_flux(W_XL, W_XR, gamma, riemann_solver)
+    flux_Y = swap_xy(get_flux(swap_xy(W_YL), swap_xy(W_YR), gamma, riemann_solver))
 
     # update solution
     area_x = geom["area_x"]
     area_y = geom["area_y"]
-    Mass = apply_fluxes(Mass, flux_Mass_X, flux_Mass_Y, area_x, area_y, dt)
-    Momx = apply_fluxes(Momx, flux_Momx_X, flux_Momx_Y, area_x, area_y, dt)
-    Momy = apply_fluxes(Momy, flux_Momy_X, flux_Momy_Y, area_x, area_y, dt)
-    Energy = apply_fluxes(Energy, flux_Energy_X, flux_Energy_Y, area_x, area_y, dt)
+    for name in ("mass", "momx", "momy", "energy"):
+        U[name] = apply_fluxes(U[name], flux_X[name], flux_Y[name], area_x, area_y, dt)
     if use_out_of_plane:
         if is_cylindrical:
             # angular momentum: the flux is weighted by the shared face radius,
             # and already contains the Maxwell stress -R B_R B_phi
-            Momz = apply_fluxes(
-                Momz,
-                geom["r_face_x"] * flux_Momz_X,
-                r * flux_Momz_Y,
+            U["momz"] = apply_fluxes(
+                U["momz"],
+                geom["r_face_x"] * flux_X["momz"],
+                r * flux_Y["momz"],
                 area_x,
                 area_y,
                 dt,
             )
         else:
-            Momz = apply_fluxes(Momz, flux_Momz_X, flux_Momz_Y, area_x, area_y, dt)
-        Bz_cons = apply_fluxes(Bz_cons, flux_Bz_X, flux_Bz_Y, dy, dx, dt)
-    bx, by = constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt, geom)
+            U["momz"] = apply_fluxes(
+                U["momz"], flux_X["momz"], flux_Y["momz"], area_x, area_y, dt
+            )
+        U["Bz"] = apply_fluxes(U["Bz"], flux_X["Bz"], flux_Y["Bz"], dy, dx, dt)
+    bx, by = constrained_transport(bx, by, flux_X["By"], flux_Y["Bx"], dx, dy, dt, geom)
 
     # geometric source terms in the radial momentum
     if is_cylindrical:
-        Momx = Momx + dt * P_prime * geom["d_area_x"]
+        U["momx"] = U["momx"] + dt * Wp["P"] * geom["d_area_x"]
         if use_out_of_plane:
             # centrifugal force and the magnetic hoop stress
-            Momx = Momx + dt * geom["vol"] * (rho_prime * vz_prime**2 - bz_prime**2) / r
+            U["momx"] = (
+                U["momx"]
+                + dt * geom["vol"] * (Wp["rho"] * Wp["vz"] ** 2 - Wp["Bz"] ** 2) / r
+            )
 
     # remove ghost cells
     for axis, has_ghosts in ((0, x_has_ghosts), (1, y_has_ghosts)):
         if has_ghosts:
-            Mass, Momx, Momy, Energy, bx, by = (
-                strip_ghosts(f, axis) for f in (Mass, Momx, Momy, Energy, bx, by)
-            )
-            if use_out_of_plane:
-                Momz, Bz_cons = (strip_ghosts(f, axis) for f in (Momz, Bz_cons))
+            U = {name: strip_ghosts(f, axis) for name, f in U.items()}
+            bx, by = strip_ghosts(bx, axis), strip_ghosts(by, axis)
 
     # get Primitive variables
     Bx, By = get_avg(bx, by)
-    bz = None if not use_out_of_plane else Bz_cons / (dx * dy)
-    rho, vx, vy, P, vz = get_primitive(
-        Mass,
-        Momx,
-        Momy,
-        Energy,
-        Bx,
-        By,
-        gamma,
-        geom_bare["vol"],
-        Momz,
-        bz,
-        geom_bare["r"],
-    )
+    W = get_primitive(U, Bx, By, gamma, geom_strip(geom, x_has_ghosts))
+    W["bx"], W["by"] = bx, by
 
-    return rho, vx, vy, P, bx, by, vz, bz
+    return W
