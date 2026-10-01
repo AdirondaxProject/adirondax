@@ -49,8 +49,17 @@ T_END = 2.0e-6  # two full rings (s)
 # field as B = sqrt(mu0) I / (2 pi r).
 SQRT_MU0 = jnp.sqrt(MU0)
 
-# the evolved fields, in the order run_simulation carries them
-STATE_KEYS = ("rho", "vx", "vy", "P", "bx", "by", "vphi", "bphi")
+# the evolved fields, and their names in the hydro solver
+HYDRO_KEYS = {
+    "rho": "rho",
+    "vx": "vx",
+    "vy": "vy",
+    "P": "P",
+    "bx": "bx",
+    "by": "by",
+    "vphi": "vz",
+    "bphi": "bz",
+}
 
 
 def b_phi(current, radius):
@@ -166,13 +175,13 @@ def build_circuit():
 
 
 def port_voltage(state, geom_r_edge):
-    vx, bz = state[1], state[7]
-    e_z = -vx[-1, :] * bz[-1, :] * SQRT_MU0
+    e_z = -state["vx"][-1, :] * state["bz"][-1, :] * SQRT_MU0
     return jnp.mean(e_z) * L_Z
 
 
 def ghost_values(state, current, didt, r_edge, r_ghost, dR):
-    rho, vx, vy, P, _, by, vz, bz = state
+    rho, vx, vy, P = state["rho"], state["vx"], state["vy"], state["P"]
+    by, vz, bz = state["by"], state["vz"], state["bz"]
     zeros = jnp.zeros_like(rho[0:1, :])
 
     v_edge = vx[-1:, :]
@@ -212,24 +221,20 @@ def run_simulation(sim, t_end=T_END, cfl=0.3, record_every=20):
     i_bank = jnp.array([I_INIT])
     currents = jnp.array([I_INIT])
 
-    state = tuple(sim.state[k] for k in STATE_KEYS)
+    state = {h: sim.state[k] for k, h in HYDRO_KEYS.items()}
 
     @jax.jit
     def advance(state, v_nodes, i_bank, currents, dt, didt):
         def load_step(port_currents):
             ghost = ghost_values(state, port_currents[0], didt, r_edge, r_ghost, dR)
             new = hydro_mhd2d_fluxes(
-                *state[:6],
-                GAMMA,
+                state,
                 geom_work,
                 dt,
-                "hlld",
-                True,
-                "driven",
-                "periodic",
-                state[6],
-                state[7],
-                geom,
+                gamma=GAMMA,
+                riemann_solver="hlld",
+                slope_limiting=True,
+                bc_x="driven",
                 ghost_x=ghost,
             )
             return new, jnp.array([port_voltage(new, r_edge)])
@@ -244,9 +249,7 @@ def run_simulation(sim, t_end=T_END, cfl=0.3, record_every=20):
 
     @jax.jit
     def timestep(state):
-        return cfl * hydro_mhd2d_timestep(
-            *state[:6], GAMMA, dR, L_Z / nz, state[6], state[7]
-        )
+        return cfl * hydro_mhd2d_timestep(state, GAMMA, dR, L_Z / nz)
 
     # Run a block of steps inside one compiled scan. The timestep is set by
     # the Alfven speed in the tenuous pseudo-vacuum, so there are a lot of
@@ -256,9 +259,7 @@ def run_simulation(sim, t_end=T_END, cfl=0.3, record_every=20):
     def block(carry):
         def one_step(carry, _):
             state, v_nodes, i_bank, currents, t, i_prev, didt = carry
-            dt = cfl * hydro_mhd2d_timestep(
-                *state[:6], GAMMA, dR, L_Z / nz, state[6], state[7]
-            )
+            dt = cfl * hydro_mhd2d_timestep(state, GAMMA, dR, L_Z / nz)
             # A block always runs its full length, so the final steps of a run
             # would otherwise be clamped to zero length. The circuit's backward
             # Euler companion models go as C/dt, so the step has to stay
@@ -289,14 +290,14 @@ def run_simulation(sim, t_end=T_END, cfl=0.3, record_every=20):
     while float(carry[4]) < t_end * (1.0 - 1e-12):
         carry, voltage = block(carry)
         state = carry[0]
-        mass = np.asarray(state[0]) * cell_volume
+        mass = np.asarray(state["rho"]) * cell_volume
         total = mass.sum()
-        profiles.append(np.asarray(state[0]).mean(axis=1))
+        profiles.append(np.asarray(state["rho"]).mean(axis=1))
         history.append(
             (
                 float(carry[4]),
                 float((radius * mass).sum() / total),
-                float((np.asarray(state[1]) * mass).sum() / total),
+                float((np.asarray(state["vx"]) * mass).sum() / total),
                 float(carry[1][1]),
                 float(carry[3][0]),
                 float(voltage),

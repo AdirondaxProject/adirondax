@@ -48,7 +48,7 @@
     },
     "boundary_condition": {
       "default": ["periodic", "periodic"],
-      "description": "options: 'periodic', 'reflective', 'axis' (per dimension). 'axis' places the cylindrical axis at R=0 and a reflecting wall at R=box_size[0]; it is required for, and only valid with, 'cylindrical' geometry."
+      "description": "options: 'periodic', 'reflective', 'outflow', 'wall', 'driven', 'axis' (per dimension). 'wall' is a perfectly conducting wall (the same as 'reflective' for pure hydro). 'driven' takes its ghost cells from sim.driven_boundary(state, axis). 'axis' places the cylindrical axis at R=0 and a reflecting wall at R=box_size[0]; it is required for, and only valid with, 'cylindrical' geometry. With magnetic=True, 'reflective' is not supported."
     }
   },
   "time": {

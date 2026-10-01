@@ -2,6 +2,15 @@ import jax.numpy as jnp
 
 # Pure functions for 2D hydrodynamics
 
+_SWAP_XY = {
+    "vx": "vy",
+    "vy": "vx",
+    "Bx": "By",
+    "By": "Bx",
+    "momx": "momy",
+    "momy": "momx",
+}
+
 
 def get_curl(Az, dx, dy):
     """
@@ -43,6 +52,16 @@ def get_gradient(f, dx, dy):
     f_dy = (jnp.roll(f, -1, axis=1) - jnp.roll(f, 1, axis=1)) / (2.0 * dy)
 
     return f_dx, f_dy
+
+
+def get_gradients(W, dx, dy, use_slope_limiting):
+    """Calculate the (optionally slope-limited) x and y gradients of a dict of fields"""
+
+    W_d = {name: get_gradient(f, dx, dy) for name, f in W.items()}
+    if use_slope_limiting:
+        W_d = {name: slope_limit(W[name], *W_d[name], dx, dy) for name in W}
+
+    return {k: d[0] for k, d in W_d.items()}, {k: d[1] for k, d in W_d.items()}
 
 
 def slope_limit(f, f_dx, f_dy, dx, dy):
@@ -96,6 +115,22 @@ def extrapolate_to_face(f, f_dx, f_dy, dx, dy):
     return f_XL, f_XR, f_YL, f_YR
 
 
+def face_states(W, W_dx, W_dy, dx, dy):
+    """Extrapolate a dict of fields to the faces, as the (XL, XR, YL, YR) states"""
+
+    faces = {
+        name: extrapolate_to_face(W[name], W_dx[name], W_dy[name], dx, dy) for name in W
+    }
+
+    return tuple({name: f[i] for name, f in faces.items()} for i in range(4))
+
+
+def swap_xy(W):
+    """Swap the x and y components of a dict of fields or fluxes"""
+
+    return {_SWAP_XY.get(name, name): f for name, f in W.items()}
+
+
 def apply_fluxes(F, flux_F_X, flux_F_Y, area_x, area_y, dt):
     """
     Apply fluxes to conserved variables
@@ -110,36 +145,3 @@ def apply_fluxes(F, flux_F_X, flux_F_Y, area_x, area_y, dt):
     )
 
     return F_new
-
-
-def pad_edge(f, axis):
-    """
-    Add one ghost cell on each side of the given axis, holding a copy of the
-    edge value.
-    """
-
-    if axis == 0:
-        return jnp.concatenate((f[0:1, :], f, f[-1:, :]), axis=0)
-    else:
-        return jnp.concatenate((f[:, 0:1], f, f[:, -1:]), axis=1)
-
-
-def strip_ghosts(f, axis):
-    """Drop the ghost cell on each side of the given axis"""
-
-    return f[1:-1, :] if axis == 0 else f[:, 1:-1]
-
-
-def zero_ghost_gradients(f_d, axis):
-    """
-    Flatten the gradient in the ghost cells.
-    """
-
-    if axis == 0:
-        f_d = f_d.at[0, :].set(0.0)
-        f_d = f_d.at[-1, :].set(0.0)
-    else:
-        f_d = f_d.at[:, 0].set(0.0)
-        f_d = f_d.at[:, -1].set(0.0)
-
-    return f_d

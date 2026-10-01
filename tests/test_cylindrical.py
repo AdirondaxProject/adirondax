@@ -243,25 +243,14 @@ def test_hllc_is_consistent_on_a_uniform_state():
 
     rho, u, v, P, gamma = 1.3, 0.7, -0.4, 2.1, 5.0 / 3.0
     one = jnp.ones((3, 3))
-    f_mass, f_momx, f_momy, f_en, f_momphi = get_flux_hllc(
-        rho * one,
-        rho * one,
-        u * one,
-        u * one,
-        v * one,
-        v * one,
-        P * one,
-        P * one,
-        None,
-        None,
-        gamma,
-    )
+    W = {"rho": rho * one, "vx": u * one, "vy": v * one, "P": P * one}
+    flux = get_flux_hllc(W, W, gamma)
     en = P / (gamma - 1.0) + 0.5 * rho * (u**2 + v**2)
-    np.testing.assert_allclose(f_mass, rho * u * one, rtol=1e-12)
-    np.testing.assert_allclose(f_momx, (rho * u**2 + P) * one, rtol=1e-12)
-    np.testing.assert_allclose(f_momy, rho * u * v * one, rtol=1e-12)
-    np.testing.assert_allclose(f_en, (en + P) * u * one, rtol=1e-12)
-    assert f_momphi is None
+    np.testing.assert_allclose(flux["mass"], rho * u * one, rtol=1e-12)
+    np.testing.assert_allclose(flux["momx"], (rho * u**2 + P) * one, rtol=1e-12)
+    np.testing.assert_allclose(flux["momy"], rho * u * v * one, rtol=1e-12)
+    np.testing.assert_allclose(flux["energy"], (en + P) * u * one, rtol=1e-12)
+    assert "momz" not in flux
 
 
 def test_hllc_resolves_the_contact_better_than_llf():
@@ -417,28 +406,17 @@ def test_hlld_is_consistent_when_the_normal_field_vanishes():
     one = jnp.ones((4,))
     P_tot = 1.125
     for B_n, B_t in [(0.0, 0.0), (0.0, 0.5), (0.5, 0.0), (0.5, 0.5)]:
-        flux = get_flux(
-            one,
-            one,
-            0 * one,
-            0 * one,
-            0 * one,
-            0 * one,
-            P_tot * one,
-            P_tot * one,
-            B_n * one,
-            B_n * one,
-            B_t * one,
-            B_t * one,
-            None,
-            None,
-            None,
-            None,
-            5.0 / 3.0,
-            "hlld",
-        )
-        assert flux[1] == pytest.approx(P_tot - B_n**2, rel=1e-12)
-        assert jnp.max(jnp.abs(flux[0])) < 1e-12  # no mass flux at rest
+        W = {
+            "rho": one,
+            "vx": 0 * one,
+            "vy": 0 * one,
+            "P": P_tot * one,
+            "Bx": B_n * one,
+            "By": B_t * one,
+        }
+        flux = get_flux(W, W, 5.0 / 3.0, "hlld")
+        assert flux["momx"] == pytest.approx(P_tot - B_n**2, rel=1e-12)
+        assert jnp.max(jnp.abs(flux["mass"])) < 1e-12  # no mass flux at rest
 
 
 def test_magnetised_annulus_is_well_balanced():

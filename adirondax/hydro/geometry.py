@@ -90,3 +90,15 @@ def get_geometry(geometry, box_size, resolution, num_ghost_x=0, r_min=0.0):
         "dy": dy,
         "is_cylindrical": True,
     }
+
+
+def geom_strip(geom, has_ghosts):
+    """Return the geometry factors restricted to the interior cells"""
+
+    if not has_ghosts or not geom["is_cylindrical"]:
+        return geom
+
+    stripped = dict(geom)
+    for key in ("vol", "area_x", "area_y", "d_area_x", "r", "r_face_x"):
+        stripped[key] = geom[key][1:-1]
+    return stripped
