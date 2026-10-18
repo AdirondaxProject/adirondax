@@ -23,6 +23,10 @@
     "rotation": { 
       "default": false,
       "description": "switch on to evolve the azimuthal velocity (requires 'cylindrical' geometry)."
+    },
+    "radiation": {
+      "default": false,
+      "description": "switch on for radiation transport (requires hydro)."
     }
   },
   "mesh": {
@@ -109,6 +113,66 @@
     "slope_limiting": {
       "default": false,
       "description": "switch on to use slope limiting."
+    }
+  },
+  "radiation": {
+    "speed_of_light": {
+      "default": 2.998e10,
+      "description": "speed of light, in simulation units."
+    },
+    "radiation_constant": {
+      "default": 7.5657e-15,
+      "description": "radiation constant a_r, in simulation units."
+    },
+    "gas_constant": {
+      "default": 8.2545e7,
+      "description": "k_B / (mean molecular weight * m_p), in simulation units. The gas temperature is T = P / (rho * gas_constant)."
+    },
+    "num_polar": {
+      "default": 4,
+      "description": "number of polar angles of the discrete ordinates (even)."
+    },
+    "num_azimuthal": {
+      "default": 4,
+      "description": "number of azimuthal angles of the discrete ordinates, over half a circle (even)."
+    },
+    "group_edges": {
+      "default": [],
+      "description": "interior boundaries h nu / k_B of the frequency groups, in temperature units. Empty for grey radiation."
+    },
+    "opacity": {
+      "scattering": {
+        "default": 0.0,
+        "description": "scattering opacity kappa_s (per unit mass)."
+      },
+      "absorption": {
+        "default": 0.0,
+        "description": "Rosseland mean absorption opacity kappa_a (per unit mass), a number or one per frequency group."
+      },
+      "planck": {
+        "default": null,
+        "description": "Planck mean absorption opacity kappa_p (per unit mass), a number or one per frequency group. null takes the absorption opacity."
+      }
+    },
+    "tau_factor": {
+      "default": 5.0,
+      "description": "scales the optical depth per cell that switches the transport from upwind to diffusive."
+    },
+    "solver": {
+      "default": "gmres",
+      "description": "options: 'gmres' (Newton-Krylov), 'jacobi'."
+    },
+    "tol": {
+      "default": 1.0e-4,
+      "description": "tolerance of the implicit radiation solve: it stops once its last update of the intensities is this fraction of their change over the step."
+    },
+    "gmres_restart": {
+      "default": 30,
+      "description": "number of Krylov vectors kept by GMRES between restarts; more speeds up streaming-dominated problems, at the cost of memory."
+    },
+    "max_iterations": {
+      "default": 1000,
+      "description": "maximum number of Newton (gmres) or Jacobi iterations per radiation solve."
     }
   },
   "quantum": {

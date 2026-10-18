@@ -15,6 +15,9 @@ from .hydro.euler2d import (
 from .hydro.geometry import get_geometry
 from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
 from .quantum import quantum_drift, quantum_kick, quantum_timestep
+from .radiation.angles import get_angles
+from .radiation.planck import group_emission
+from .radiation.rt2d import radiation_rt2d_step
 from .utils import print_parameters, set_up_parameters
 from .validation import validate_params
 from .visualization import plot_sim
@@ -33,7 +36,14 @@ class Simulation:
       external_potential (callable): (x, y) -> V, the external gravitational
         potential, used when physics.external_potential is on.
       driven_boundary (callable): (state, axis) -> {key: (lo, hi)}, the ghost
-        cells of a 'driven' boundary along the given axis, for each field.
+        cells of a 'driven' boundary along the given axis, for each field. With
+        radiation, the entry 'I' gives the intensities entering the domain,
+        each of shape (num_groups, num_dirs, 1, ny) or (num_groups, num_dirs,
+        nx, 1); without it the boundary is a vacuum for the radiation.
+      opacity (callable): (rho, T) -> {'sigma_s', 'sigma_a', 'sigma_p'}, the
+        scattering, Rosseland mean and Planck mean absorption coefficients
+        rho*kappa, each broadcastable to (num_groups, nx, ny). Replaces the
+        constant opacities of the radiation parameters when set.
 
     """
 
@@ -68,6 +78,11 @@ class Simulation:
             self.state["psi"] = (
                 jnp.zeros(self.resolution, dtype=jnp.complex64) + jnp.nan
             )
+        if self.params["physics"]["radiation"]:
+            num_dirs = len(self.angles["w"])
+            self.state["I"] = (
+                jnp.zeros((self.num_groups, num_dirs, *self.resolution)) + jnp.nan
+            )
 
         # extra info to keep track of
         self.state["steps_taken"] = jnp.array(0) + jnp.nan
@@ -75,6 +90,7 @@ class Simulation:
         # functions
         self.external_potential = None
         self.driven_boundary = None
+        self.opacity = None
 
         self._advance_cache = None
 
@@ -126,6 +142,33 @@ class Simulation:
         Return the dimension of the simulation
         """
         return len(self.resolution)
+
+    @property
+    def angles(self):
+        """
+        Return the angular grid of the radiation field (see get_angles)
+        """
+        rad = self.params["radiation"]
+        return get_angles(rad["num_polar"], rad["num_azimuthal"])
+
+    @property
+    def num_groups(self):
+        """
+        Return the number of frequency groups of the radiation field
+        """
+        return len(self.params["radiation"]["group_edges"]) + 1
+
+    def blackbody_intensity(self, T):
+        """
+        Return the isotropic blackbody intensities at temperature T, of shape
+        (num_groups, num_dirs) + T.shape
+        """
+        rad = self.params["radiation"]
+        eps = group_emission(
+            jnp.asarray(T), rad["group_edges"], rad["radiation_constant"]
+        )
+        num_dirs = len(self.angles["w"])
+        return jnp.broadcast_to(eps[:, None], (eps.shape[0], num_dirs) + eps.shape[1:])
 
     @property
     def steps_taken(self):
@@ -225,6 +268,7 @@ class Simulation:
             json.dumps(self.params, sort_keys=True),
             self.external_potential,
             self.driven_boundary,
+            self.opacity,
         )
         if self._advance_cache is None or self._advance_cache[0] != key:
             self._advance_cache = (key, jax.jit(self._build_advance()))
@@ -265,6 +309,7 @@ class Simulation:
         use_quantum = self.params["physics"]["quantum"]
         use_gravity = self.params["physics"]["gravity"]
         use_external_potential = self.params["physics"]["external_potential"]
+        use_radiation = self.params["physics"]["radiation"]
 
         # constants
         G = constants["gravitational_constant"]
@@ -276,6 +321,23 @@ class Simulation:
         slope_limiting = self.params["hydro"]["slope_limiting"]
 
         m_per_hbar = 1.0  # XXX
+
+        rad = self.params["radiation"]
+        if use_radiation:
+            angles = self.angles
+            group_edges = tuple(rad["group_edges"])
+            kappa = rad["opacity"]
+            kappa_s = jnp.asarray(kappa["scattering"])
+            kappa_a = jnp.asarray(kappa["absorption"])
+            kappa_p = (
+                kappa_a if kappa["planck"] is None else jnp.asarray(kappa["planck"])
+            )
+            opacity = self.opacity
+            gas_constant = rad["gas_constant"]
+
+            def per_group(kappa):
+                # a number, or one value per frequency group
+                return kappa.reshape((-1, 1, 1)) if kappa.ndim == 1 else kappa
 
         if use_magnetic:
             hydro_fluxes, hydro_timestep = hydro_mhd2d_fluxes, hydro_mhd2d_timestep
@@ -294,6 +356,11 @@ class Simulation:
 
         def driven_ghosts(state, axis, bc):
             return to_hydro(driven_boundary(state, axis)) if bc == "driven" else None
+
+        def driven_intensities(state, axis, bc):
+            if bc != "driven":
+                return None
+            return driven_boundary(state, axis).get("I")
 
         def advance(state, t_target):
             # mesh metric factors: 'geom' on the bare grid, 'geom_work' on the
@@ -350,6 +417,42 @@ class Simulation:
                     state = from_hydro(state, W)
                 return state
 
+            def radiate(state, dt):
+                if not use_radiation:
+                    return state
+                rho = state["rho"]
+                if opacity is None:
+                    sigma = {
+                        "sigma_s": kappa_s * rho,
+                        "sigma_a": per_group(kappa_a) * rho,
+                        "sigma_p": per_group(kappa_p) * rho,
+                    }
+                else:
+                    sigma = opacity(rho, state["P"] / (rho * gas_constant))
+                W, I = radiation_rt2d_step(
+                    {k: state[k] for k in ("rho", "vx", "vy", "P")},
+                    state["I"],
+                    geom,
+                    dt,
+                    angles=angles,
+                    opacity=sigma,
+                    group_edges=group_edges,
+                    c=rad["speed_of_light"],
+                    a_r=rad["radiation_constant"],
+                    gas_constant=gas_constant,
+                    gamma=gamma,
+                    bc_x=bc_x,
+                    bc_y=bc_y,
+                    ghost_x=driven_intensities(state, 0, bc_x),
+                    ghost_y=driven_intensities(state, 1, bc_y),
+                    tau_factor=rad["tau_factor"],
+                    solver=rad["solver"],
+                    tol=rad["tol"],
+                    max_iter=rad["max_iterations"],
+                    restart=rad["gmres_restart"],
+                )
+                return {**state, **W, "I": I}
+
             def drift(state, dt):
                 state = dict(state)
                 if use_quantum:
@@ -373,10 +476,12 @@ class Simulation:
             def step(state):
                 dt = get_timestep(state) if use_adaptive_timesteps else dt_ref
 
-                # kick-drift-kick
+                # kick-drift-kick, inside a symmetric split of implicit solves
+                state = radiate(state, 0.5 * dt)
                 state = kick(state, 0.5 * dt)
                 state = drift(state, dt)
                 state = kick(state, 0.5 * dt)
+                state = radiate(state, 0.5 * dt)
 
                 return {
                     **state,

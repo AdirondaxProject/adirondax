@@ -90,6 +90,12 @@ Check out the [`examples/`](https://github.com/AdirondaxProject/adirondax/tree/m
   <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/sod">
     <img src="examples/sod/movie.gif" alt="sod" height="128"/>
   </a>
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/shadow">
+    <img src="examples/shadow/movie.gif" alt="shadow" height="128"/>
+  </a>
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/crossing_beams">
+    <img src="examples/crossing_beams/movie.gif" alt="crossing_beams" height="128"/>
+  </a>
   <br>
 </p>
 

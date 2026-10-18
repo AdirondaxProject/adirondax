@@ -65,8 +65,18 @@ Gallery
          :alt: flux_compression
          :target: examples.html#flux-compression
 
-     -
-     -
+     - .. figure:: ../../examples/shadow/movie.gif
+         :height: 128px
+         :align: center
+         :alt: shadow
+         :target: examples.html#shadow
+
+     - .. figure:: ../../examples/crossing_beams/movie.gif
+         :height: 128px
+         :align: center
+         :alt: crossing_beams
+         :target: examples.html#crossing-beams
+
      -
 
 
@@ -266,4 +276,48 @@ README:
 Script:
 
 .. literalinclude:: ../../examples/sedov/sedov.py
+  :language: python
+
+
+shadow
+------
+
+.. figure:: ../../examples/shadow/movie.gif
+  :height: 256px
+  :align: center
+  :alt: shadow
+  :target: examples.html#shadow
+
+  See on GitHub: `examples/shadow <https://github.com/AdirondaxProject/adirondax/tree/main/examples/shadow>`_
+
+README:
+
+.. literalinclude:: ../../examples/shadow/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/shadow/shadow.py
+  :language: python
+
+
+crossing_beams
+--------------
+
+.. figure:: ../../examples/crossing_beams/movie.gif
+  :height: 256px
+  :align: center
+  :alt: crossing_beams
+  :target: examples.html#crossing-beams
+
+  See on GitHub: `examples/crossing_beams <https://github.com/AdirondaxProject/adirondax/tree/main/examples/crossing_beams>`_
+
+README:
+
+.. literalinclude:: ../../examples/crossing_beams/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/crossing_beams/crossing_beams.py
   :language: python

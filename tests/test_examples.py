@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import pytest
 
 from adirondax.hydro.common2d import get_div
+from adirondax.radiation.rt2d import radiation_moments
 from adirondax.utils import run_example_main
 
 rel_tol = 1e-3
@@ -160,3 +161,45 @@ def test_alfven_wave():
     dy = sim.box_size[1] / sim.resolution[1]
     div_B = get_div(sim.state["bx"], sim.state["by"], dx, dy)
     assert jnp.max(jnp.abs(div_B)) * dx < 1.0e-6
+
+
+def test_shadow():
+    sim = run("shadow")
+    assert sim.resolution == [80, 48]
+    assert sim.state["t"] > 0.0
+
+    E = radiation_moments(sim.state["I"], sim.angles, 1.9e5)["E"][0]
+    X, Y = sim.mesh
+
+    # the radiation stays positive, even next to the cloud's surface
+    assert jnp.min(E) > 0.0
+
+    # the cloud casts an umbra: just behind it, the beams are blocked
+    behind = (X > 0.12) & (X < 0.16) & (jnp.abs(Y) < 0.02)
+    beside = (X > 0.12) & (X < 0.16) & (jnp.abs(Y) > 0.2)
+    assert jnp.mean(E[behind]) < 0.1 * jnp.mean(E[beside])
+
+    # the radiation is too weak to move the gas over a few light-crossing times
+    assert jnp.max(jnp.abs(sim.state["vx"])) < 1.0e-4
+    assert jnp.max(jnp.abs(sim.state["P"] - 1.0)) < 0.05
+
+    assert jnp.mean(E) == pytest.approx(5.451840e-05, rel=rel_tol)
+
+
+def test_crossing_beams():
+    sim = run("crossing_beams")
+    assert sim.resolution == [16, 64]
+    assert sim.state["t"] > 0.0
+
+    E = radiation_moments(sim.state["I"], sim.angles, 1.0e3)["E"][0]
+
+    # the beams are mirror images of each other, and the scheme must keep them so
+    assert jnp.max(jnp.abs(E - E[::-1])) < 1.0e-6
+
+    # the light has filled the whole box
+    assert jnp.min(E) > 0.0
+
+    # with no opacity the gas never sees the radiation
+    assert jnp.max(jnp.abs(sim.state["vx"])) < 1.0e-4
+
+    assert jnp.mean(E) == pytest.approx(0.2983828, rel=rel_tol)

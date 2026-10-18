@@ -1,3 +1,5 @@
+import itertools
+
 BOUNDARY_CONDITIONS = ["periodic", "reflective", "axis", "outflow", "wall", "driven"]
 MAGNETIC_BOUNDARY_CONDITIONS = ["periodic", "outflow", "axis", "wall", "driven"]
 
@@ -78,6 +80,11 @@ def validate_params(params):
                 "'rotation' requires cylindrical geometry or magnetic=True"
             )
 
+    if physics["radiation"]:
+        validate_radiation_params(params["radiation"])
+        if not physics["hydro"]:
+            raise ValueError("'radiation' requires hydro")
+
     if hydro["riemann_solver"] not in ["llf", "hlld", "hllc"]:
         raise ValueError("riemann solver does not exist")
 
@@ -103,3 +110,32 @@ def validate_params(params):
         and params["time"]["num_timesteps"] % params["output"]["num_checkpoints"] != 0
     ):
         raise ValueError("'num_checkpoints' must divide 'num_timesteps'")
+
+
+def validate_radiation_params(rad):
+    """Check that the radiation parameters are consistent"""
+
+    for name in ("num_polar", "num_azimuthal"):
+        n = rad[name]
+        if n < 2 or n % 2 != 0:
+            raise ValueError(f"radiation '{name}' must be even and >= 2: {n}")
+
+    edges = rad["group_edges"]
+    if any(e <= 0.0 for e in edges) or any(
+        e1 >= e2 for e1, e2 in itertools.pairwise(edges)
+    ):
+        raise ValueError(
+            f"radiation 'group_edges' must be positive and increasing: {edges}"
+        )
+
+    num_groups = len(edges) + 1
+    for name in ("absorption", "planck"):
+        kappa = rad["opacity"][name]
+        if isinstance(kappa, (list, tuple)) and len(kappa) != num_groups:
+            raise ValueError(
+                f"radiation opacity '{name}' needs one value per frequency group "
+                f"({num_groups}): {kappa}"
+            )
+
+    if rad["solver"] not in ["gmres", "jacobi"]:
+        raise ValueError(f"unknown radiation solver: '{rad['solver']}'")
