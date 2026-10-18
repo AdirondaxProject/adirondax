@@ -8,6 +8,7 @@ import orbax.checkpoint as ocp
 
 from .constants import code_constants
 from .gravity import calculate_gravitational_potential, get_acceleration
+from .hydro.common2d import get_avg
 from .hydro.euler2d import (
     hydro_euler2d_accelerate,
     hydro_euler2d_fluxes,
@@ -343,6 +344,8 @@ class Simulation:
         use_gravity = self.params["physics"]["gravity"]
         use_external_potential = self.params["physics"]["external_potential"]
         use_radiation = self.params["physics"]["radiation"]
+        use_rotation = self.params["physics"]["rotation"]
+        b_out = self.out_of_plane_keys[1]
 
         # physical constants, in code units
         constants = self.constants
@@ -454,7 +457,20 @@ class Simulation:
             def radiate(state, dt):
                 if not use_radiation:
                     return state
+
+                # with a magnetic field, 'P' is the total pressure; the
+                # radiation exchanges energy with the gas pressure alone
+                P_mag = 0.0
+                if use_magnetic:
+                    Bx, By = get_avg(state["bx"], state["by"])
+                    B_sq = Bx**2 + By**2
+                    if use_rotation:
+                        B_sq = B_sq + state[b_out] ** 2
+                    P_mag = 0.5 * B_sq
+
                 rho = state["rho"]
+                W = {k: state[k] for k in ("rho", "vx", "vy")}
+                W["P"] = state["P"] - P_mag
                 if opacity is None:
                     sigma = {
                         "sigma_s": kappa_s * rho,
@@ -462,9 +478,9 @@ class Simulation:
                         "sigma_p": per_group(kappa_p) * rho,
                     }
                 else:
-                    sigma = opacity(rho, state["P"] / (rho * gas_constant))
+                    sigma = opacity(rho, W["P"] / (rho * gas_constant))
                 W, I = radiation_rt2d_step(
-                    {k: state[k] for k in ("rho", "vx", "vy", "P")},
+                    W,
                     state["I"],
                     geom,
                     dt,
@@ -485,6 +501,7 @@ class Simulation:
                     max_iter=rad["max_iterations"],
                     restart=rad["gmres_restart"],
                 )
+                W["P"] = W["P"] + P_mag
                 return {**state, **W, "I": I}
 
             def drift(state, dt):

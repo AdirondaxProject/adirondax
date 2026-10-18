@@ -456,3 +456,59 @@ def test_radiation_parameters_are_validated():
 
     with pytest.raises(ValueError), contextlib.redirect_stdout(io.StringIO()):
         adx.Simulation({"physics": {"radiation": True}})
+
+
+@pytest.mark.parametrize("rotation", [False, True])
+def test_magnetized_gas_in_equilibrium_with_radiation_stays_put(rotation):
+    """The radiation sees the gas pressure, not the total pressure with B^2/2"""
+
+    params = {
+        "physics": {
+            "hydro": True,
+            "radiation": True,
+            "magnetic": True,
+            "rotation": rotation,
+        },
+        "mesh": {
+            "geometry": "cylindrical",
+            "resolution": [8, 8],
+            "box_size": [1.0, 1.0],
+            "boundary_condition": ["axis", "periodic"],
+        },
+        "constants": {
+            "speed_of_light": 100.0,
+            "radiation_constant": 1.0,
+            "boltzmann_constant": 1.0,
+            "proton_mass": 1.0,
+        },
+        "time": {"span": 0.05, "num_timesteps": 5},
+        "hydro": {"eos": {"gamma": GAMMA}},
+        "radiation": {
+            "num_polar": 2,
+            "num_azimuthal": 2,
+            "opacity": {"absorption": 10.0},
+        },
+    }
+    with contextlib.redirect_stdout(io.StringIO()):
+        sim = adx.Simulation(params)
+
+    # gas at T = 1 threaded by a uniform axial field, so the total pressure is
+    # 1 + 0.5 (and the azimuthal field and velocity, if any, are zero)
+    R, _ = sim.mesh
+    sim.state["t"] = 0.0
+    sim.state["rho"] = jnp.ones_like(R)
+    sim.state["vx"] = jnp.zeros_like(R)
+    sim.state["vy"] = jnp.zeros_like(R)
+    sim.state["bx"] = jnp.zeros_like(R)
+    sim.state["by"] = jnp.ones_like(R)
+    sim.state["P"] = 1.5 * jnp.ones_like(R)
+    if rotation:
+        sim.state["vphi"] = jnp.zeros_like(R)
+        sim.state["bphi"] = jnp.zeros_like(R)
+    sim.state["I"] = sim.blackbody_intensity(jnp.ones_like(R))
+    I0 = sim.state["I"]
+    with contextlib.redirect_stdout(io.StringIO()):
+        sim.run()
+
+    assert jnp.max(jnp.abs(sim.state["P"] - 1.5)) < 1e-10
+    assert jnp.max(jnp.abs(sim.state["I"] - I0)) < 1e-10 * jnp.max(I0)
