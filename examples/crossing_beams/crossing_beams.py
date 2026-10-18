@@ -52,6 +52,12 @@ def set_up_simulation(resolution_multiplier=4, save=True):
             "box_size": [1.0, 4.0],
             "boundary_condition": ["periodic", "driven"],
         },
+        "constants": {
+            "speed_of_light": C_LIGHT,
+            "radiation_constant": 1.0,
+            "boltzmann_constant": 1.0,
+            "proton_mass": 1.0,
+        },
         "time": {
             "span": t_stop,
             "num_timesteps": nt,
@@ -65,9 +71,6 @@ def set_up_simulation(resolution_multiplier=4, save=True):
             "eos": {"type": "ideal", "gamma": 5.0 / 3.0},
         },
         "radiation": {
-            "speed_of_light": C_LIGHT,
-            "radiation_constant": 1.0,
-            "gas_constant": 1.0,
             "num_polar": 2,
             "num_azimuthal": 2,
         },

@@ -29,6 +29,50 @@
       "description": "switch on for radiation transport (requires hydro)."
     }
   },
+  "units": {
+    "length": {
+      "default": 1.0,
+      "description": "size of the code unit of length, in cm."
+    },
+    "mass": {
+      "default": 1.0,
+      "description": "size of the code unit of mass, in g."
+    },
+    "time": {
+      "default": 1.0,
+      "description": "size of the code unit of time, in s."
+    },
+    "temperature": {
+      "default": 1.0,
+      "description": "size of the code unit of temperature, in K."
+    }
+  },
+  "constants": {
+    "speed_of_light": {
+      "default": null,
+      "description": "set the speed of light directly, in code units. null derives it from the units."
+    },
+    "gravitational_constant": {
+      "default": null,
+      "description": "set the gravitational constant directly, in code units. null derives it from the units."
+    },
+    "planck_constant": {
+      "default": null,
+      "description": "set the Planck constant directly, in code units. null derives it from the units."
+    },
+    "boltzmann_constant": {
+      "default": null,
+      "description": "set the Boltzmann constant directly, in code units. null derives it from the units."
+    },
+    "proton_mass": {
+      "default": null,
+      "description": "set the proton mass directly, in code units. null derives it from the units."
+    },
+    "radiation_constant": {
+      "default": null,
+      "description": "set the radiation constant a_r directly, in code units. null derives it from the units."
+    }
+  },
   "mesh": {
     "type": {
       "default": "eulerian",
@@ -93,6 +137,10 @@
         "default": 1.66666667,
         "description": "adiabatic index for 'ideal' gas."
       },
+      "mean_molecular_weight": {
+        "default": 1.0,
+        "description": "mean molecular weight mu: the gas temperature is T = mu m_p P / (k_B rho)."
+      },
       "sound_speed": {
         "default": 1.0,
         "description": "isothermal sound speed for 'isothermal' gas."
@@ -116,18 +164,6 @@
     }
   },
   "radiation": {
-    "speed_of_light": {
-      "default": 2.998e10,
-      "description": "speed of light, in simulation units."
-    },
-    "radiation_constant": {
-      "default": 7.5657e-15,
-      "description": "radiation constant a_r, in simulation units."
-    },
-    "gas_constant": {
-      "default": 8.2545e7,
-      "description": "k_B / (mean molecular weight * m_p), in simulation units. The gas temperature is T = P / (rho * gas_constant)."
-    },
     "num_polar": {
       "default": 4,
       "description": "number of polar angles of the discrete ordinates (even)."

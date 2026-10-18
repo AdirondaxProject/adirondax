@@ -21,7 +21,7 @@ Philip Mocz (2026)
 """
 
 
-# Units: the gas constant is 1, so T = P / rho, and
+# Units: k_B = m_p = 1, so T = P / rho, and
 # the speed of light is c = 1.9e5 times the sound speed
 C_LIGHT = 1.9e5
 A_RAD = 1.0e-7  # the radiation constant: radiation is dynamically negligible
@@ -62,6 +62,12 @@ def set_up_simulation(resolution_multiplier=4, save=True):
             "box_size": [1.0, 0.6],
             "boundary_condition": ["driven", "periodic"],
         },
+        "constants": {
+            "speed_of_light": C_LIGHT,
+            "radiation_constant": A_RAD,
+            "boltzmann_constant": 1.0,
+            "proton_mass": 1.0,
+        },
         "time": {
             "span": t_stop,
             "num_timesteps": nt,
@@ -77,9 +83,6 @@ def set_up_simulation(resolution_multiplier=4, save=True):
             "slope_limiting": True,
         },
         "radiation": {
-            "speed_of_light": C_LIGHT,
-            "radiation_constant": A_RAD,
-            "gas_constant": 1.0,
             "num_polar": 6,
             "num_azimuthal": 8,
         },

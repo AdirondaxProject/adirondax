@@ -80,6 +80,20 @@ def validate_params(params):
                 "'rotation' requires cylindrical geometry or magnetic=True"
             )
 
+    for name, size in params["units"].items():
+        if not size > 0.0:
+            raise ValueError(f"the code unit of '{name}' must be positive: {size}")
+
+    for name, value in params["constants"].items():
+        if value is not None and not value > 0.0:
+            raise ValueError(f"the constant '{name}' must be positive or null: {value}")
+
+    if not params["quantum"]["m_eV"] > 0.0:
+        raise ValueError("the axion mass 'm_eV' must be positive")
+
+    if not hydro["eos"]["mean_molecular_weight"] > 0.0:
+        raise ValueError("'mean_molecular_weight' must be positive")
+
     if physics["radiation"]:
         validate_radiation_params(params["radiation"])
         if not physics["hydro"]:

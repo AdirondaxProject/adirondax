@@ -9,6 +9,15 @@ import matplotlib.pyplot as plt
 import optax
 
 import adirondax as adx
+from adirondax.constants import constants
+
+# the axion mass for which m/hbar = 1 in code units (cgs)
+M_EV = (
+    constants["planck_constant"]
+    / (2.0 * jnp.pi)
+    * constants["speed_of_light"] ** 2
+    / constants["electron_volt"]
+)
 
 """
 Solve an Inverse-Problem that finds the initial wave function phases that
@@ -37,6 +46,9 @@ def set_up_simulation():
         "time": {
             "span": t_stop,
             "num_timesteps": nt,
+        },
+        "quantum": {
+            "m_eV": M_EV,
         },
     }
 

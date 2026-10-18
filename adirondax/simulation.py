@@ -1,11 +1,12 @@
 import json
+import math
 import os
 
 import jax
 import jax.numpy as jnp
 import orbax.checkpoint as ocp
 
-from .constants import constants
+from .constants import code_constants
 from .gravity import calculate_gravitational_potential, get_acceleration
 from .hydro.euler2d import (
     hydro_euler2d_accelerate,
@@ -144,6 +145,38 @@ class Simulation:
         return len(self.resolution)
 
     @property
+    def constants(self):
+        """
+        Return the physical constants in code units: derived from the 'units'
+        parameters, unless set directly by the 'constants' parameters
+        """
+        return code_constants(self.params["units"], self.params["constants"])
+
+    @property
+    def gas_constant(self):
+        """
+        Return k_B / (mu m_p) in code units, so that the gas temperature is
+        T = P / (rho * gas_constant)
+        """
+        c = self.constants
+        mu = self.params["hydro"]["eos"]["mean_molecular_weight"]
+        return c["boltzmann_constant"] / (mu * c["proton_mass"])
+
+    @property
+    def m_per_hbar(self):
+        """
+        Return the axion mass over hbar, m/hbar, in code units
+        """
+        c = self.constants
+        m = (
+            self.params["quantum"]["m_eV"]
+            * c["electron_volt"]
+            / c["speed_of_light"] ** 2
+        )
+        hbar = c["planck_constant"] / (2.0 * math.pi)
+        return m / hbar
+
+    @property
     def angles(self):
         """
         Return the angular grid of the radiation field (see get_angles)
@@ -165,7 +198,7 @@ class Simulation:
         """
         rad = self.params["radiation"]
         eps = group_emission(
-            jnp.asarray(T), rad["group_edges"], rad["radiation_constant"]
+            jnp.asarray(T), rad["group_edges"], self.constants["radiation_constant"]
         )
         num_dirs = len(self.angles["w"])
         return jnp.broadcast_to(eps[:, None], (eps.shape[0], num_dirs) + eps.shape[1:])
@@ -254,7 +287,7 @@ class Simulation:
         return self._calc_grav_potential(
             self.state,
             k_sq,
-            constants["gravitational_constant"],
+            self.constants["gravitational_constant"],
             self.params["physics"]["quantum"],
             self.params["physics"]["hydro"],
         )
@@ -311,7 +344,8 @@ class Simulation:
         use_external_potential = self.params["physics"]["external_potential"]
         use_radiation = self.params["physics"]["radiation"]
 
-        # constants
+        # physical constants, in code units
+        constants = self.constants
         G = constants["gravitational_constant"]
 
         # physics variables
@@ -320,7 +354,7 @@ class Simulation:
         riemann_solver = self.params["hydro"]["riemann_solver"]
         slope_limiting = self.params["hydro"]["slope_limiting"]
 
-        m_per_hbar = 1.0  # XXX
+        m_per_hbar = self.m_per_hbar
 
         rad = self.params["radiation"]
         if use_radiation:
@@ -333,7 +367,7 @@ class Simulation:
                 kappa_a if kappa["planck"] is None else jnp.asarray(kappa["planck"])
             )
             opacity = self.opacity
-            gas_constant = rad["gas_constant"]
+            gas_constant = self.gas_constant
 
             def per_group(kappa):
                 # a number, or one value per frequency group
@@ -437,8 +471,8 @@ class Simulation:
                     angles=angles,
                     opacity=sigma,
                     group_edges=group_edges,
-                    c=rad["speed_of_light"],
-                    a_r=rad["radiation_constant"],
+                    c=constants["speed_of_light"],
+                    a_r=constants["radiation_constant"],
                     gas_constant=gas_constant,
                     gamma=gamma,
                     bc_x=bc_x,

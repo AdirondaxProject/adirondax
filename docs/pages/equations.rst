@@ -4,6 +4,39 @@ Equations
 Adirondax solves the following equations:
 
 
+Units
+-----
+
+The ``units`` parameters set the size of the code units of length, mass, time
+and temperature, in cm, g, s and K; the default is cgs. Every physical constant
+the solvers need (the speed of light, the gravitational constant, the Boltzmann
+constant, the proton mass, the radiation constant, ...) is converted from cgs
+into these units, so all of the physics modules share one consistent set. For
+example, SI units are
+
+.. code-block:: python
+
+   "units": {"length": 1.0e2, "mass": 1.0e3, "time": 1.0, "temperature": 1.0}
+
+Problems posed in terms of dimensionless numbers can instead set constants
+directly, in code units, in the ``constants`` parameters, which take precedence
+over the units. For instance, the ratio of the speed of light to the sound
+speed, with :math:`k_B = m_p = 1` so that :math:`T = P/\rho`:
+
+.. code-block:: python
+
+   "constants": {"speed_of_light": 1.9e5, "boltzmann_constant": 1.0, "proton_mass": 1.0}
+
+The constants in code units are available as ``sim.constants``.
+
+Likewise, the Schrodinger field uses :math:`m/\hbar` in code units, derived
+from the axion mass ``quantum.m_eV`` (:math:`10^{-22}` eV by default) and the
+units.
+
+The magnetic field is carried in units in which :math:`\mu_0 = 1`, so that
+the magnetic pressure is :math:`B^2/2`.
+
+
 Magnetohydrodynamics
 --------------------
 
@@ -141,8 +174,9 @@ emission integrated over the group, which sums to :math:`a_r T^4/4\pi`. The
 intensities are in units of energy density per steradian, so the radiation
 energy density is :math:`E_r = 4\pi\sum_n w_n I_n` for quadrature weights
 :math:`w_n` that sum to one. The gas temperature is
-:math:`T = P/(\rho\,\mathcal{R})` with ``radiation.gas_constant``
-:math:`\mathcal{R} = k_B/(\mu m_p)`.
+:math:`T = \mu m_p P/(k_B \rho)`, with the mean molecular weight :math:`\mu`
+given by ``hydro.eos.mean_molecular_weight``. The speed of light, the radiation
+constant and the rest come from the code units (see `Units`_).
 
 The transport and the coupling are solved together with backward Euler, so the
 timestep is set by the hydrodynamics alone. The face fluxes are a modified HLLE

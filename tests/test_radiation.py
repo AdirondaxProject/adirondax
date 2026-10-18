@@ -370,12 +370,15 @@ def make_sim(geometry, bcs, magnetic=False):
             "box_size": [1.0, 1.0],
             "boundary_condition": bcs,
         },
+        "constants": {
+            "speed_of_light": 100.0,
+            "radiation_constant": 1.0,
+            "boltzmann_constant": 1.0,
+            "proton_mass": 1.0,
+        },
         "time": {"span": 0.1, "num_timesteps": 10},
         "hydro": {"eos": {"gamma": GAMMA}, "slope_limiting": True},
         "radiation": {
-            "speed_of_light": 100.0,
-            "radiation_constant": 1.0,
-            "gas_constant": 1.0,
             "num_polar": 2,
             "num_azimuthal": 4,
             "group_edges": [3.0],
