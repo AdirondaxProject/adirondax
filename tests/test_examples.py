@@ -203,3 +203,24 @@ def test_crossing_beams():
     assert jnp.max(jnp.abs(sim.state["vx"])) < 1.0e-4
 
     assert jnp.mean(E) == pytest.approx(0.2983828, rel=rel_tol)
+
+
+def test_crooked_pipe():
+    argv = ["--res", "1", "--method", "diffusion", "--no-save", "--no-plot"]
+    sim = run_example_main("examples/crooked_pipe/crooked_pipe.py", argv=argv)
+    assert sim.resolution == [20, 70]
+    result = sim.results["diffusion"]
+    assert result["times"][-1] == pytest.approx(1.0e-5)
+
+    # the material heats up (to within a whisker: the far end of the pipe
+    # first cools a little into the vacuum), and never beyond the source
+    history = result["history"]
+    assert jnp.all(jnp.diff(history, axis=0) > -1e-5)
+    assert jnp.max(history) < 0.3
+
+    # the tracers further down the pipe stay cooler
+    assert jnp.all(jnp.diff(history[-1][jnp.array([0, 1, 3, 4])]) < 0.0)
+
+    assert history[-1][0] == pytest.approx(0.2604638, rel=rel_tol)
+    assert history[-1][4] == pytest.approx(0.2003466, rel=rel_tol)
+    assert jnp.mean(result["maps"][-1][1]) == pytest.approx(0.1513435, rel=rel_tol)

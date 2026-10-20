@@ -1,5 +1,7 @@
 import itertools
 
+from .radiation.fld2d import LIMITERS
+
 BOUNDARY_CONDITIONS = ["periodic", "reflective", "axis", "outflow", "wall", "driven"]
 MAGNETIC_BOUNDARY_CONDITIONS = ["periodic", "outflow", "axis", "wall", "driven"]
 
@@ -96,8 +98,11 @@ def validate_params(params):
 
     if physics["radiation"]:
         validate_radiation_params(params["radiation"])
-        if not physics["hydro"]:
-            raise ValueError("'radiation' requires hydro")
+        if not physics["hydro"] and params["time"]["num_timesteps"] < 1:
+            raise ValueError(
+                "'radiation' without hydro (a static material) needs a fixed "
+                "'num_timesteps'"
+            )
 
     if hydro["riemann_solver"] not in ["llf", "hlld", "hllc"]:
         raise ValueError("riemann solver does not exist")
@@ -150,6 +155,12 @@ def validate_radiation_params(rad):
                 f"radiation opacity '{name}' needs one value per frequency group "
                 f"({num_groups}): {kappa}"
             )
+
+    if rad["method"] not in ["transport", "diffusion"]:
+        raise ValueError(f"unknown radiation method: '{rad['method']}'")
+
+    if rad["flux_limiter"] not in LIMITERS:
+        raise ValueError(f"unknown flux limiter: '{rad['flux_limiter']}'")
 
     if rad["solver"] not in ["gmres", "jacobi"]:
         raise ValueError(f"unknown radiation solver: '{rad['solver']}'")

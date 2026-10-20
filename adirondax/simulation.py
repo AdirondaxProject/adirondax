@@ -18,6 +18,7 @@ from .hydro.geometry import get_geometry
 from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
 from .quantum import quantum_drift, quantum_kick, quantum_timestep
 from .radiation.angles import get_angles
+from .radiation.fld2d import radiation_fld2d_step
 from .radiation.planck import group_emission
 from .radiation.rt2d import radiation_rt2d_step
 from .utils import print_parameters, set_up_parameters
@@ -41,7 +42,10 @@ class Simulation:
         cells of a 'driven' boundary along the given axis, for each field. With
         radiation, the entry 'I' gives the intensities entering the domain,
         each of shape (num_groups, num_dirs, 1, ny) or (num_groups, num_dirs,
-        nx, 1); without it the boundary is a vacuum for the radiation.
+        nx, 1), or, with the 'diffusion' method, the entry 'Er' gives the
+        radiation energy density outside it, of shape (num_groups, 1, ny) or
+        (num_groups, nx, 1); without it the boundary is a vacuum for the
+        radiation.
       opacity (callable): (rho, T) -> {'sigma_s', 'sigma_a', 'sigma_p'}, the
         scattering, Rosseland mean and Planck mean absorption coefficients
         rho*kappa, each broadcastable to (num_groups, nx, ny). Replaces the
@@ -63,7 +67,9 @@ class Simulation:
         # simulation state
         self.state = {}
         self.state["t"] = jnp.array(0.0) + jnp.nan
-        if self.params["physics"]["hydro"]:
+        # the radiation needs a material to interact with, which is static
+        # without hydro
+        if self.params["physics"]["hydro"] or self.params["physics"]["radiation"]:
             self.state["rho"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["vx"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["vy"] = jnp.zeros(self.resolution) + jnp.nan
@@ -81,10 +87,15 @@ class Simulation:
                 jnp.zeros(self.resolution, dtype=jnp.complex64) + jnp.nan
             )
         if self.params["physics"]["radiation"]:
-            num_dirs = len(self.angles["w"])
-            self.state["I"] = (
-                jnp.zeros((self.num_groups, num_dirs, *self.resolution)) + jnp.nan
-            )
+            if self.params["radiation"]["method"] == "diffusion":
+                self.state["Er"] = (
+                    jnp.zeros((self.num_groups, *self.resolution)) + jnp.nan
+                )
+            else:
+                num_dirs = len(self.angles["w"])
+                self.state["I"] = (
+                    jnp.zeros((self.num_groups, num_dirs, *self.resolution)) + jnp.nan
+                )
 
         # extra info to keep track of
         self.state["steps_taken"] = jnp.array(0) + jnp.nan
@@ -203,6 +214,17 @@ class Simulation:
         )
         num_dirs = len(self.angles["w"])
         return jnp.broadcast_to(eps[:, None], (eps.shape[0], num_dirs) + eps.shape[1:])
+
+    def blackbody_energy(self, T):
+        """
+        Return the blackbody radiation energy density at temperature T in each
+        frequency group, of shape (num_groups,) + T.shape
+        """
+        rad = self.params["radiation"]
+        eps = group_emission(
+            jnp.asarray(T), rad["group_edges"], self.constants["radiation_constant"]
+        )
+        return 4.0 * jnp.pi * eps
 
     @property
     def steps_taken(self):
@@ -371,6 +393,7 @@ class Simulation:
             )
             opacity = self.opacity
             gas_constant = self.gas_constant
+            rad_method = rad["method"]
 
             def per_group(kappa):
                 # a number, or one value per frequency group
@@ -394,10 +417,10 @@ class Simulation:
         def driven_ghosts(state, axis, bc):
             return to_hydro(driven_boundary(state, axis)) if bc == "driven" else None
 
-        def driven_intensities(state, axis, bc):
+        def driven_radiation(state, axis, bc, key):
             if bc != "driven":
                 return None
-            return driven_boundary(state, axis).get("I")
+            return driven_boundary(state, axis).get(key)
 
         def advance(state, t_target):
             # mesh metric factors: 'geom' on the bare grid, 'geom_work' on the
@@ -479,30 +502,51 @@ class Simulation:
                     }
                 else:
                     sigma = opacity(rho, W["P"] / (rho * gas_constant))
-                W, I = radiation_rt2d_step(
-                    W,
-                    state["I"],
-                    geom,
-                    dt,
-                    angles=angles,
-                    opacity=sigma,
-                    group_edges=group_edges,
-                    c=constants["speed_of_light"],
-                    a_r=constants["radiation_constant"],
-                    gas_constant=gas_constant,
-                    gamma=gamma,
-                    bc_x=bc_x,
-                    bc_y=bc_y,
-                    ghost_x=driven_intensities(state, 0, bc_x),
-                    ghost_y=driven_intensities(state, 1, bc_y),
-                    tau_factor=rad["tau_factor"],
-                    solver=rad["solver"],
-                    tol=rad["tol"],
-                    max_iter=rad["max_iterations"],
-                    restart=rad["gmres_restart"],
-                )
-                W["P"] = W["P"] + P_mag
-                return {**state, **W, "I": I}
+                common = {
+                    "opacity": sigma,
+                    "group_edges": group_edges,
+                    "c": constants["speed_of_light"],
+                    "a_r": constants["radiation_constant"],
+                    "gas_constant": gas_constant,
+                    "gamma": gamma,
+                    "bc_x": bc_x,
+                    "bc_y": bc_y,
+                    "tol": rad["tol"],
+                    "static": not use_hydro,
+                }
+                if rad_method == "diffusion":
+                    W_new, E = radiation_fld2d_step(
+                        W,
+                        state["Er"],
+                        geom,
+                        dt,
+                        ghost_x=driven_radiation(state, 0, bc_x, "Er"),
+                        ghost_y=driven_radiation(state, 1, bc_y, "Er"),
+                        flux_limiter=rad["flux_limiter"],
+                        max_iter=rad["max_iterations"],
+                        restart=rad["gmres_restart"],
+                        **common,
+                    )
+                    radiation_field = {"Er": E}
+                else:
+                    W_new, I = radiation_rt2d_step(
+                        W,
+                        state["I"],
+                        geom,
+                        dt,
+                        angles=angles,
+                        ghost_x=driven_radiation(state, 0, bc_x, "I"),
+                        ghost_y=driven_radiation(state, 1, bc_y, "I"),
+                        tau_factor=rad["tau_factor"],
+                        solver=rad["solver"],
+                        max_iter=rad["max_iterations"],
+                        restart=rad["gmres_restart"],
+                        **common,
+                    )
+                    radiation_field = {"I": I}
+
+                W_new["P"] = W_new["P"] + P_mag
+                return {**state, **W_new, **radiation_field}
 
             def drift(state, dt):
                 state = dict(state)

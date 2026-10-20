@@ -1,4 +1,4 @@
-jax==0.8.0
+jax==0.9.2
 jaxdecomp==0.2.9
 orbax-checkpoint==0.11.28
 optax==0.2.6

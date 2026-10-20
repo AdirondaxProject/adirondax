@@ -25,8 +25,11 @@ def plot_sim(state, checkpoint_dir, i, params):
         rho_proj_gas = jnp.log10(rho_gas).T
     if params["physics"]["radiation"]:
         rad = params["radiation"]
-        w = get_angles(rad["num_polar"], rad["num_azimuthal"])["w"]
-        E_rad = 4.0 * jnp.pi * jnp.einsum("n,fnij->ij", w, state["I"])
+        if rad["method"] == "diffusion":
+            E_rad = jnp.sum(state["Er"], axis=0)
+        else:
+            w = get_angles(rad["num_polar"], rad["num_azimuthal"])["w"]
+            E_rad = 4.0 * jnp.pi * jnp.einsum("n,fnij->ij", w, state["I"])
         if params["mesh"]["geometry"] == "cylindrical":
             E_rad = jnp.concatenate((jnp.flip(E_rad, axis=0), E_rad), axis=0)
         # floored, as the radiation can be zero where no light has yet reached

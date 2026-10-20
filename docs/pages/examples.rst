@@ -79,6 +79,16 @@ Gallery
 
      -
 
+   * - .. figure:: ../../examples/crooked_pipe/movie.gif
+         :height: 128px
+         :align: center
+         :alt: crooked_pipe
+         :target: examples.html#crooked-pipe
+
+     -
+     -
+     -
+
 
 flux_compression
 ----------------
@@ -320,4 +330,26 @@ README:
 Script:
 
 .. literalinclude:: ../../examples/crossing_beams/crossing_beams.py
+  :language: python
+
+
+crooked_pipe
+------------
+
+.. figure:: ../../examples/crooked_pipe/movie.gif
+  :height: 256px
+  :align: center
+  :alt: crooked_pipe
+  :target: examples.html#crooked-pipe
+
+  See on GitHub: `examples/crooked_pipe <https://github.com/AdirondaxProject/adirondax/tree/main/examples/crooked_pipe>`_
+
+README:
+
+.. literalinclude:: ../../examples/crooked_pipe/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/crooked_pipe/crooked_pipe.py
   :language: python

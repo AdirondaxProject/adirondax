@@ -36,13 +36,11 @@
 [software-doi-badge]:  https://zenodo.org/badge/902479137.svg
 
 
-A differentiable astrophysics simulator in JAX
+A differentiable physics simulator in JAX
 
 Author: [Philip Mocz (@pmocz)](https://github.com/pmocz/)
 
-⚠️ Adirondax is currently being built and is not yet ready for use. Check back later ⚠️
-
-Adirondax is a high-performance scientific research software for conducting astrophysical and cosmological simulations. Being differentiable, Adirondax can seamlessly integrate with pipelines for inverse-problems, inference, optimization, and coupling to ML models. Adirondax is scalable on multiple GPUs.
+Adirondax is a high-performance scientific research software for conducting computational physics and astrophysics simulations. Being differentiable, Adirondax can seamlessly integrate with pipelines for inverse-problems, inference, optimization, and coupling to ML models. Adirondax is scalable on multiple GPUs.
 
 Adirondax has a simpler companion project dedicated to Fuzzy Dark Matter simulations: [Jaxion](https://github.com/JaxionProject/jaxion)
 
@@ -95,6 +93,9 @@ Check out the [`examples/`](https://github.com/AdirondaxProject/adirondax/tree/m
   </a>
   <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/crossing_beams">
     <img src="examples/crossing_beams/movie.gif" alt="crossing_beams" height="128"/>
+  </a>
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/crooked_pipe">
+    <img src="examples/crooked_pipe/movie.gif" alt="crooked_pipe" height="128"/>
   </a>
   <br>
 </p>

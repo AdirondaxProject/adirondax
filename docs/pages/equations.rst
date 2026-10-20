@@ -10,7 +10,8 @@ Adirondax couples a set of physics modules, each switched on in the
 * ``gravity`` and ``external_potential``: self-gravity and a fixed potential,
 * ``quantum``: the Schrodinger-Poisson equations of a scalar field (fuzzy dark
   matter),
-* ``radiation``: radiation transport, coupled to the gas.
+* ``radiation``: radiation transport, by discrete ordinates or flux-limited
+  diffusion, coupled to the gas (or to a static material, without ``hydro``).
 
 All of them work on a uniform 2D mesh, in Cartesian :math:`(x, y)` or
 axisymmetric cylindrical :math:`(R, z)` geometry, and are written in pure JAX,
@@ -408,6 +409,58 @@ round-off.
 
 Not yet included are the Doppler shift of photons between frequency groups
 (exact with one group) and Compton scattering.
+
+Flux-limited diffusion
+^^^^^^^^^^^^^^^^^^^^^^
+
+Setting ``radiation.method`` to ``'diffusion'`` evolves only the radiation
+energy density :math:`E_f` of each group (the state field ``Er``), which is
+much cheaper, by
+
+.. math::
+
+   \frac{\partial E_f}{\partial t}
+     = \nabla\cdot\left(D_f\nabla E_f\right)
+     + c\,\sigma_{p,f}\left(4\pi\epsilon_f(T) - E_f\right),
+   \qquad
+   D_f = \frac{c\,\lambda(R)}{\sigma_{t,f}},
+   \quad R = \frac{|\nabla E_f|}{\sigma_{t,f} E_f}
+
+where the flux limiter :math:`\lambda(R)` (``radiation.flux_limiter``) goes to
+1/3 in optically thick gas, which recovers the diffusion limit, and to
+:math:`1/R` in optically thin gas, which caps the flux at :math:`cE_f`: that of
+Levermore & Pomraning (1981), :math:`\lambda = (2+R)/(6+3R+R^2)`
+(``'levermore_pomraning'``); :math:`(9+R^2)^{-1/2}` (``'larsen'``);
+:math:`1/\max(3, R)` (``'max'``); or plain diffusion, :math:`\lambda = 1/3`
+(``'none'``), which does not cap the flux. The diffusion, the flux limiter and
+the exchange of energy with the gas are solved together, implicitly: the
+limiter is evaluated from the energy density at the end of the step, as one
+evaluated at its start lets the radiation diffuse without limit into gas it
+has not yet reached. Like the transport, it conserves the total energy of the
+radiation and the gas to round-off.
+
+An ``'outflow'`` boundary is a vacuum (Marshak) boundary, through which the
+radiation leaves at :math:`cE/2`, and a ``'driven'`` boundary also lets in
+radiation of the energy density given by ``sim.driven_boundary``.
+
+In a moving gas the radiation is carried along with it, to first order in
+:math:`v/c`, and pushes on it with the force :math:`-\lambda\nabla E_f`: in
+optically thick gas this is a radiation fluid of pressure :math:`E/3`, and in
+optically thin gas the force vanishes.
+
+Diffusion is accurate where the radiation is nearly isotropic, deep in
+optically thick material. It cannot cast shadows, and it carries radiation
+around obstacles and corners too easily: see the crooked pipe example, which
+compares the two methods.
+
+Radiation and a static material
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With ``physics.radiation`` on and ``physics.hydro`` off, the radiation
+exchanges energy with a static material (``rho`` and ``P`` in the state,
+which hold its density and, through the gas law, its temperature): it heats
+and cools the material, but does not move it. There is then no Courant
+condition, so ``time.num_timesteps`` must be set.
 
 
 External circuits

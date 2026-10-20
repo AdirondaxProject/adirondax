@@ -392,6 +392,7 @@ def radiation_rt2d_step(
     max_iter=1000,
     restart=30,
     max_restarts=100,
+    static=False,
 ):
     """
     Advance the radiation field implicitly by dt, and exchange energy and
@@ -443,6 +444,9 @@ def radiation_rt2d_step(
       GMRES restart length.
     max_restarts: int
       Maximum number of GMRES restarts per linear solve.
+    static: bool
+      Hold the material fixed: the radiation exchanges energy with it but does
+      not push on it.
 
     Returns
     -------
@@ -582,6 +586,9 @@ def radiation_rt2d_step(
     dE = -4.0 * jnp.pi * jnp.sum(w * collision, axis=(0, 1))
     dpx = -(4.0 * jnp.pi / c) * jnp.sum(w * mu_x * collision, axis=(0, 1))
     dpy = -(4.0 * jnp.pi / c) * jnp.sum(w * mu_y * collision, axis=(0, 1))
+
+    if static:
+        return {**W, "P": P + (gamma - 1.0) * dE}, I_new
 
     vx_new = vx + dpx / rho
     vy_new = vy + dpy / rho

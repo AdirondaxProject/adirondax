@@ -13,9 +13,7 @@ adirondax
          :width: 96px
          :align: left
 
-      **Adirondax** is a scientific research software for conducting astrophysical and cosmological simulations and solving inverse problems, implemented in JAX and utilizing automatic differentiation and multi-GPU acceleration.
-
-⚠️ Adirondax is currently being built and is not yet ready for use. Check back later! ⚠️
+      **Adirondax** is a scientific research software for conducting computational physics and astrophysics simulations and solving inverse problems, implemented in JAX and utilizing automatic differentiation and multi-GPU acceleration.
 
 
 .. grid:: 3
