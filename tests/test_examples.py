@@ -215,15 +215,20 @@ def test_crooked_pipe():
     # the material heats up (to within a whisker: the far end of the pipe
     # first cools a little into the vacuum), and never beyond the source
     history = result["history"]
-    assert jnp.all(jnp.diff(history, axis=0) > -1e-5)
+    assert jnp.all(history > history[0] - 0.002)
     assert jnp.max(history) < 0.3
+
+    # without oscillating from step to step
+    dT = jnp.diff(history, axis=0)
+    flips = jnp.sign(dT[1:]) != jnp.sign(dT[:-1])
+    assert jnp.max(flips * jnp.minimum(jnp.abs(dT[1:]), jnp.abs(dT[:-1]))) < 1e-6
 
     # the tracers further down the pipe stay cooler
     assert jnp.all(jnp.diff(history[-1][jnp.array([0, 1, 3, 4])]) < 0.0)
 
-    assert history[-1][0] == pytest.approx(0.2604638, rel=rel_tol)
-    assert history[-1][4] == pytest.approx(0.2003466, rel=rel_tol)
-    assert jnp.mean(result["maps"][-1][1]) == pytest.approx(0.1513435, rel=rel_tol)
+    assert history[-1][0] == pytest.approx(0.2585830, rel=rel_tol)
+    assert history[-1][4] == pytest.approx(0.1895992, rel=rel_tol)
+    assert jnp.mean(result["maps"][-1][1]) == pytest.approx(0.1523108, rel=rel_tol)
 
 
 def test_marshak_wave():

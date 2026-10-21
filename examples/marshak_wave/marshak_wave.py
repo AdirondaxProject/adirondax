@@ -107,8 +107,6 @@ def set_up_simulation(r0, resolution_multiplier=2):
         "radiation": {
             "method": "diffusion",
             "flux_limiter": "none",
-            "face_average": "arithmetic",
-            "tol": 1.0e-8,
         },
     }
 

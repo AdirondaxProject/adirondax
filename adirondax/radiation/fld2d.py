@@ -4,7 +4,7 @@ from jax import lax
 from jax.scipy.sparse.linalg import cg, gmres
 
 from .planck import group_emission
-from .rt2d import _MIRRORED, _converged, _face_areas_x, _solve_temperature
+from .rt2d import _MIRRORED, _face_areas_x, _solve_temperature
 
 # Pure functions for implicit, multigroup, flux-limited radiation diffusion in 2D
 # (x,y) and axisymmetric (R,z) geometry
@@ -26,7 +26,7 @@ from .rt2d import _MIRRORED, _converged, _face_areas_x, _solve_temperature
 # Not yet included: the Doppler shift of photons between frequency groups.
 
 LIMITERS = ("levermore_pomraning", "larsen", "max", "none")
-FACE_AVERAGES = ("harmonic", "arithmetic")
+FACE_AVERAGES = ("power_law", "harmonic", "arithmetic")
 
 
 def _diffusion_coefficient(sigma, g, c, limiter):
@@ -57,19 +57,53 @@ def _diffusion_coefficient(sigma, g, c, limiter):
     return c * D
 
 
-def _face_coefficient(s_lo, s_hi, g, c, limiter, face_average):
+def _phi(z):
+    """(e^z - 1) / z, which is 1 at z = 0"""
+
+    small = jnp.abs(z) < 1.0e-6
+    z_safe = jnp.where(small, 1.0, z)
+    return jnp.where(small, 1.0 + 0.5 * z, jnp.expm1(z_safe) / z_safe)
+
+
+def _power_law_opacity(s_lo, s_hi, E_lo, E_hi):
     """
-    The diffusion coefficient D and the flux limiter lambda = sigma D / c on a
-    face between cells of opacities s_lo and s_hi. The face opacity is either
-    their mean ('harmonic': the harmonic mean of the cells' diffusion
-    coefficients, right for steady flow across a material interface) or their
-    harmonic mean ('arithmetic': the arithmetic mean of the cells' diffusion
-    coefficients, right for a heat front in one material, where the opacity of
-    the cold side would otherwise choke the flux). The flux limiter then acts
-    on the face opacity.
+    The face opacity whose diffusion coefficient is the exact mean of that of
+    the cells, D ~ 1/sigma, over the energy densities between them, if it
+    varies as a power of the energy density in between:
+      1/sigma_face = (1/sigma_lo) phi(u + v) / phi(u),
+    with u = ln(E_hi/E_lo), v = ln(sigma_lo/sigma_hi) and phi(z) = (e^z - 1)/z.
+    This is right at a heat front, where the opacity of the cold side would
+    otherwise choke the flux; between cells of equal energy density, at a
+    material interface, it is the logarithmic mean of their coefficients.
     """
 
-    if face_average == "harmonic":
+    # (logarithms of a quotient would have an infinite derivative at E = 0)
+    tiny = jnp.finfo(jnp.result_type(s_lo, E_lo)).tiny
+
+    def log(x):
+        return jnp.log(jnp.maximum(jnp.abs(x), tiny))
+
+    u = log(E_hi) - log(E_lo)
+    v = log(s_lo) - log(s_hi)
+    u = jnp.clip(u, -500.0, 500.0)
+    w = jnp.clip(u + v, -500.0, 500.0)
+    return s_lo * _phi(u) / _phi(w)
+
+
+def _face_coefficient(s_lo, s_hi, g, c, limiter, face_average, E_lo, E_hi):
+    """
+    The diffusion coefficient D and the flux limiter lambda = sigma D / c on a
+    face between cells of opacities s_lo and s_hi and energy densities E_lo and
+    E_hi. The face opacity is that of _power_law_opacity ('power_law'), their
+    mean ('harmonic': the harmonic mean of the cells' diffusion coefficients,
+    right for steady flow across a material interface) or their harmonic mean
+    ('arithmetic': the arithmetic mean of the cells' diffusion coefficients).
+    The flux limiter then acts on the face opacity.
+    """
+
+    if face_average == "power_law":
+        sigma = _power_law_opacity(s_lo, s_hi, E_lo, E_hi)
+    elif face_average == "harmonic":
         sigma = 0.5 * (s_lo + s_hi)
     elif face_average == "arithmetic":
         tiny = jnp.finfo(jnp.result_type(s_lo, s_hi)).tiny
@@ -139,16 +173,21 @@ def _conductance(E, sigma_t, dx, c, limiter, axis, bc, ghost, face_average):
     s_lo, s_hi = _sides(_pad_edges(sigma_t, axis, bc), axis)
 
     tiny = jnp.finfo(E.dtype).tiny
-    E_face = 0.5 * (jnp.abs(E_lo) + jnp.abs(E_hi))
-    g = jnp.abs(E_hi - E_lo) / jnp.maximum(dx * E_face, tiny)
-    k = _face_coefficient(s_lo, s_hi, g, c, limiter, face_average)[0] / dx
+    # the gradient relative to the upwind energy density, so that the free
+    # streaming flux, c E_upwind, does not grow with the energy density
+    # downstream (which can make large implicit steps oscillate)
+    E_up = jnp.maximum(jnp.abs(E_lo), jnp.abs(E_hi))
+    g = jnp.abs(E_hi - E_lo) / jnp.maximum(dx * E_up, tiny)
+    k = _face_coefficient(s_lo, s_hi, g, c, limiter, face_average, E_lo, E_hi)[0] / dx
 
     if bc in _MIRRORED:
         zero = jnp.zeros_like(lax.index_in_dim(k, 0, axis + 1, keepdims=False))
         k = _set_ends(k, axis, zero, zero)
     elif bc in ("outflow", "driven"):
         # the gradient across the half cell to the boundary is twice as steep
-        D_b = _face_coefficient(s_lo, s_hi, 2.0 * g, c, limiter, face_average)[0]
+        D_b = _face_coefficient(
+            s_lo, s_hi, 2.0 * g, c, limiter, face_average, E_lo, E_hi
+        )[0]
         k_b = 1.0 / (0.5 * dx / jnp.maximum(D_b, tiny) + 2.0 / c)
         ax = axis + 1
         k = _set_ends(
@@ -186,13 +225,28 @@ def _flux_limiter(E, sigma_t, dx, limiter, axis, bc, ghost, face_average):
 
     tiny = jnp.finfo(E.dtype).tiny
     grad = (E_hi - E_lo) / dx
-    E_face = 0.5 * (jnp.abs(E_lo) + jnp.abs(E_hi))
-    g = jnp.abs(E_hi - E_lo) / jnp.maximum(dx * E_face, tiny)
-    lam = _face_coefficient(s_lo, s_hi, g, 1.0, limiter, face_average)[1]
+    # the gradient relative to the upwind energy density, so that the free
+    # streaming flux, c E_upwind, does not grow with the energy density
+    # downstream (which can make large implicit steps oscillate)
+    E_up = jnp.maximum(jnp.abs(E_lo), jnp.abs(E_hi))
+    g = jnp.abs(E_hi - E_lo) / jnp.maximum(dx * E_up, tiny)
+    lam = _face_coefficient(s_lo, s_hi, g, 1.0, limiter, face_average, E_lo, E_hi)[1]
     if bc in _MIRRORED:
         zero = jnp.zeros_like(lax.index_in_dim(lam, 0, axis + 1, keepdims=False))
         lam = _set_ends(lam, axis, zero, zero)
     return lam, lam * grad
+
+
+def _converged(update, x, x0, tol):
+    """
+    Whether the largest update of the energy densities is small next to their
+    largest change over the step. A norm summed over the grid would let a few
+    cells, such as those at the mouth of an optically thin channel, stop short
+    of convergence, and their energy density oscillate from step to step.
+    """
+
+    floor = 100.0 * jnp.finfo(x.dtype).eps * jnp.max(jnp.abs(x))
+    return jnp.max(jnp.abs(update)) <= tol * jnp.max(jnp.abs(x - x0)) + floor
 
 
 def _divergence(F_x, F_y, A_x, A_y, vol):
@@ -268,7 +322,7 @@ def radiation_fld2d_step(
     ghost_x=None,
     ghost_y=None,
     flux_limiter="levermore_pomraning",
-    face_average="harmonic",
+    face_average="power_law",
     tol=1.0e-4,
     max_iter=1000,
     max_newton=50,
@@ -317,16 +371,16 @@ def radiation_fld2d_step(
       diffusion, which does not limit the flux in optically thin gas).
     face_average: str
       How the diffusion coefficient on a face is formed from those of the cells
-      on either side: their harmonic mean ('harmonic', from the mean opacity,
-      right for steady flow across a material interface) or their arithmetic
-      mean ('arithmetic', right for a heat front moving into cold material,
-      whose high opacity would otherwise choke it; with a flux limiter, it can
-      make the solution oscillate at a sharp interface between optically thin
-      and thick material).
+      on either side: 'power_law' (their mean over the energy densities between
+      the cells, taking it to vary as a power of the energy density: right both
+      for a heat front moving into cold, opaque material and across a material
+      interface), 'harmonic' (their harmonic mean, from the mean opacity: right
+      for steady flow across a material interface, but the opacity of the cold
+      side chokes a heat front) or 'arithmetic' (their arithmetic mean).
     tol: float
-      Tolerance of the Newton iteration: it stops once its last update of the
-      energy densities, summed over the grid, is this fraction of their change
-      over the step.
+      Tolerance of the Newton iteration: it stops once its largest update of
+      the energy densities is this fraction of their largest change over the
+      step.
     max_iter: int
       Maximum number of conjugate gradient (grey) or GMRES (multigroup)
       iterations per linear solve.
@@ -543,7 +597,7 @@ def radiation_fld2d_step(
 
 
 def radiation_fld_flux(
-    E, opacity, geom, c, flux_limiter="levermore_pomraning", face_average="harmonic"
+    E, opacity, geom, c, flux_limiter="levermore_pomraning", face_average="power_law"
 ):
     """
     The radiation flux F = -D grad E of each group at the cell centers, for

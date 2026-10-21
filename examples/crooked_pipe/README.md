@@ -37,8 +37,8 @@ spatial resolution, rather than the angular: halving the cells cuts it
 from 5x to 2.6x, while 64 directions instead of 16 hardly change it.
 
 Flux-limited diffusion (dashed lines) fails, as it is known to: it carries the
-radiation around the bends far too easily, heats the far end of the pipe
-hundreds of times too early, and leaves it more than twice too hot. With
+radiation around the bends far too easily, heats the third, fourth and fifth
+points three to five times too early, and leaves the far end twice too hot. With
 transport, the radiation that reaches the walls is soaked up by them, and only
 the heated walls slowly pass it along.
 

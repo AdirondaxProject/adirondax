@@ -170,8 +170,8 @@ def test_flux_limiter_keeps_the_radiation_slower_than_light():
 def test_heat_front_advances_into_cold_opaque_material():
     """
     A heat front whose opacity falls steeply as it heats (sigma ~ T^-3)
-    advances into cold material with the arithmetic face average, while the
-    harmonic one lets the opacity of the cold side choke it
+    advances into cold material with the power-law (and arithmetic) face
+    average, while the harmonic one lets the opacity of the cold side choke it
     """
 
     nx, ny = 64, 2
@@ -209,6 +209,7 @@ def test_heat_front_advances_into_cold_opaque_material():
             W_, E_ = step(W_, E_)
         return float(jnp.max(jnp.where(W_["P"][:, 0] > 0.3, x, 0.0)))
 
+    assert depth("power_law") > 0.2
     assert depth("arithmetic") > 0.2
     assert depth("harmonic") < 0.12
 

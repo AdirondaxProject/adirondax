@@ -432,14 +432,29 @@ where the flux limiter :math:`\lambda(R)` (``radiation.flux_limiter``) goes to
 Levermore & Pomraning (1981), :math:`\lambda = (2+R)/(6+3R+R^2)`
 (``'levermore_pomraning'``); :math:`(9+R^2)^{-1/2}` (``'larsen'``);
 :math:`1/\max(3, R)` (``'max'``); or plain diffusion, :math:`\lambda = 1/3`
-(``'none'``), which does not cap the flux. The diffusion coefficient on a face
-is the harmonic mean of those of the cells on either side
-(``radiation.face_average = 'harmonic'``, from their mean opacity), which is
-right for steady flow across a material interface, or their arithmetic mean
-(``'arithmetic'``), which a heat front moving into cold, opaque material needs:
-with the harmonic mean, the opacity of the cold side chokes it (see the Marshak
-wave example). With a flux limiter, the arithmetic mean can make the solution
-oscillate at a sharp interface between optically thin and thick material.
+(``'none'``), which does not cap the flux.
+
+The diffusion coefficient on a face is the mean of :math:`D \propto 1/\sigma_t`
+over the energy densities between the two cells, taking it to vary as a power
+of the energy density in between:
+
+.. math::
+
+   \frac{1}{\sigma_\mathrm{face}}
+     = \frac{1}{\sigma_{t,L}}\,\frac{\phi(u+v)}{\phi(u)},
+   \qquad
+   u = \ln\frac{E_R}{E_L},
+   \quad v = \ln\frac{\sigma_{t,L}}{\sigma_{t,R}},
+   \quad \phi(z) = \frac{e^z - 1}{z}
+
+on which the flux limiter then acts (``radiation.face_average = 'power_law'``,
+the default). This is exact for an opacity that is a power of the temperature,
+and lets a heat front move into cold, opaque material: the mean opacity of the
+two cells (``'harmonic'``, the harmonic mean of their diffusion coefficients)
+would let the cold side choke it (see the Marshak wave example). Between cells
+of equal energy density, at a material interface, it is the logarithmic mean of
+their diffusion coefficients, which lies between the harmonic mean and the
+arithmetic mean (``'arithmetic'``).
 
 The diffusion, the flux limiter and the exchange of energy with the gas are
 solved together, implicitly: the limiter is evaluated from the energy density

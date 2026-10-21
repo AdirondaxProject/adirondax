@@ -39,9 +39,10 @@ radiation's own heat capacity, about a tenth of the foam's at 2 HeV, slows the
 wave by a few percent.
 
 The radiation is solved by flux-limited diffusion, without a limiter (as in the
-paper), and with the diffusion coefficient on each face averaged arithmetically
-between its two cells: averaged harmonically, the opacity of the cold foam would
-choke the front.
+paper). The diffusion coefficient on each face is averaged over the steep rise
+of the opacity between its two cells (the default `face_average = 'power_law'`):
+the mean opacity of the two cells (`'harmonic'`) would let the cold foam choke
+the front.
 
 The movie shows the temperature across the cylinder for `r0` = 0.1 cm.
 
