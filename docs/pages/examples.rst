@@ -85,7 +85,12 @@ Gallery
          :alt: crooked_pipe
          :target: examples.html#crooked-pipe
 
-     -
+     - .. figure:: ../../examples/marshak_wave/movie.gif
+         :height: 128px
+         :align: center
+         :alt: marshak_wave
+         :target: examples.html#marshak-wave
+
      -
      -
 
@@ -352,4 +357,26 @@ README:
 Script:
 
 .. literalinclude:: ../../examples/crooked_pipe/crooked_pipe.py
+  :language: python
+
+
+marshak_wave
+------------
+
+.. figure:: ../../examples/marshak_wave/movie.gif
+  :height: 256px
+  :align: center
+  :alt: marshak_wave
+  :target: examples.html#marshak-wave
+
+  See on GitHub: `examples/marshak_wave <https://github.com/AdirondaxProject/adirondax/tree/main/examples/marshak_wave>`_
+
+README:
+
+.. literalinclude:: ../../examples/marshak_wave/README.md
+  :language: md
+
+Script:
+
+.. literalinclude:: ../../examples/marshak_wave/marshak_wave.py
   :language: python

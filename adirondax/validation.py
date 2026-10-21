@@ -1,6 +1,6 @@
 import itertools
 
-from .radiation.fld2d import LIMITERS
+from .radiation.fld2d import FACE_AVERAGES, LIMITERS
 
 BOUNDARY_CONDITIONS = ["periodic", "reflective", "axis", "outflow", "wall", "driven"]
 MAGNETIC_BOUNDARY_CONDITIONS = ["periodic", "outflow", "axis", "wall", "driven"]
@@ -161,6 +161,9 @@ def validate_radiation_params(rad):
 
     if rad["flux_limiter"] not in LIMITERS:
         raise ValueError(f"unknown flux limiter: '{rad['flux_limiter']}'")
+
+    if rad["face_average"] not in FACE_AVERAGES:
+        raise ValueError(f"unknown face average: '{rad['face_average']}'")
 
     if rad["solver"] not in ["gmres", "jacobi"]:
         raise ValueError(f"unknown radiation solver: '{rad['solver']}'")

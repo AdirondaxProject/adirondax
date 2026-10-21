@@ -172,6 +172,10 @@
       "default": "levermore_pomraning",
       "description": "flux limiter of the 'diffusion' method. options: 'levermore_pomraning', 'larsen', 'max', 'none' (plain diffusion)."
     },
+    "face_average": {
+      "default": "harmonic",
+      "description": "how the 'diffusion' method forms the diffusion coefficient on a face from those of the cells on either side. options: 'harmonic' (their harmonic mean: right across material interfaces), 'arithmetic' (their mean: right for a heat front moving into cold, opaque material)."
+    },
     "num_polar": {
       "default": 4,
       "description": "number of polar angles of the discrete ordinates (even)."

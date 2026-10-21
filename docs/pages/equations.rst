@@ -432,12 +432,20 @@ where the flux limiter :math:`\lambda(R)` (``radiation.flux_limiter``) goes to
 Levermore & Pomraning (1981), :math:`\lambda = (2+R)/(6+3R+R^2)`
 (``'levermore_pomraning'``); :math:`(9+R^2)^{-1/2}` (``'larsen'``);
 :math:`1/\max(3, R)` (``'max'``); or plain diffusion, :math:`\lambda = 1/3`
-(``'none'``), which does not cap the flux. The diffusion, the flux limiter and
-the exchange of energy with the gas are solved together, implicitly: the
-limiter is evaluated from the energy density at the end of the step, as one
-evaluated at its start lets the radiation diffuse without limit into gas it
-has not yet reached. Like the transport, it conserves the total energy of the
-radiation and the gas to round-off.
+(``'none'``), which does not cap the flux. The diffusion coefficient on a face
+is the harmonic mean of those of the cells on either side
+(``radiation.face_average = 'harmonic'``, from their mean opacity), which is
+right for steady flow across a material interface, or their arithmetic mean
+(``'arithmetic'``), which a heat front moving into cold, opaque material needs:
+with the harmonic mean, the opacity of the cold side chokes it (see the Marshak
+wave example). With a flux limiter, the arithmetic mean can make the solution
+oscillate at a sharp interface between optically thin and thick material.
+
+The diffusion, the flux limiter and the exchange of energy with the gas are
+solved together, implicitly: the limiter is evaluated from the energy density
+at the end of the step, as one evaluated at its start lets the radiation
+diffuse without limit into gas it has not yet reached. Like the transport, it
+conserves the total energy of the radiation and the gas to round-off.
 
 An ``'outflow'`` boundary is a vacuum (Marshak) boundary, through which the
 radiation leaves at :math:`cE/2`, and a ``'driven'`` boundary also lets in

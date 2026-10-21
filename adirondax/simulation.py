@@ -523,6 +523,7 @@ class Simulation:
                         ghost_x=driven_radiation(state, 0, bc_x, "Er"),
                         ghost_y=driven_radiation(state, 1, bc_y, "Er"),
                         flux_limiter=rad["flux_limiter"],
+                        face_average=rad["face_average"],
                         max_iter=rad["max_iterations"],
                         restart=rad["gmres_restart"],
                         **common,

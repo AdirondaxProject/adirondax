@@ -167,6 +167,52 @@ def test_flux_limiter_keeps_the_radiation_slower_than_light():
     assert front("none") > light + 0.4
 
 
+def test_heat_front_advances_into_cold_opaque_material():
+    """
+    A heat front whose opacity falls steeply as it heats (sigma ~ T^-3)
+    advances into cold material with the arithmetic face average, while the
+    harmonic one lets the opacity of the cold side choke it
+    """
+
+    nx, ny = 64, 2
+    geom = get_geometry("cartesian", [1.0, ny / nx], [nx, ny])
+    x = (jnp.arange(nx) + 0.5) / nx
+    T0 = jnp.where(x < 0.1, 1.0, 0.01)[:, None] * jnp.ones((nx, ny))
+    W, E = gas(nx, ny), (T0**4)[None]
+    W["P"] = T0
+
+    def depth(face_average):
+        opacity = {"sigma_s": 0.0}
+        step = jax.jit(
+            lambda W, E: radiation_fld2d_step(
+                W,
+                E,
+                geom,
+                1e-3,
+                opacity={
+                    **opacity,
+                    "sigma_a": 10.0 * jnp.maximum(W["P"], 0.01) ** -3,
+                    "sigma_p": 10.0 * jnp.maximum(W["P"], 0.01) ** -3,
+                },
+                group_edges=(),
+                c=100.0,
+                a_r=1.0,
+                gas_constant=1.0,
+                gamma=GAMMA,
+                bc_x="reflective",
+                flux_limiter="none",
+                face_average=face_average,
+            )
+        )
+        W_, E_ = W, E
+        for _ in range(50):
+            W_, E_ = step(W_, E_)
+        return float(jnp.max(jnp.where(W_["P"][:, 0] > 0.3, x, 0.0)))
+
+    assert depth("arithmetic") > 0.2
+    assert depth("harmonic") < 0.12
+
+
 def test_marshak_source_fills_an_empty_box():
     """A box driven by the same radiation from both ends fills up with it"""
 
@@ -349,7 +395,11 @@ def test_diffusion_parameters_are_validated():
     def params(**rad):
         return {"physics": {"hydro": True, "radiation": True}, "radiation": rad}
 
-    for bad in [{"method": "monte_carlo"}, {"flux_limiter": "minerbo"}]:
+    for bad in [
+        {"method": "monte_carlo"},
+        {"flux_limiter": "minerbo"},
+        {"face_average": "geometric"},
+    ]:
         with pytest.raises(ValueError), contextlib.redirect_stdout(io.StringIO()):
             adx.Simulation(params(**bad))
 

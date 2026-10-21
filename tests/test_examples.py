@@ -224,3 +224,27 @@ def test_crooked_pipe():
     assert history[-1][0] == pytest.approx(0.2604638, rel=rel_tol)
     assert history[-1][4] == pytest.approx(0.2003466, rel=rel_tol)
     assert jnp.mean(result["maps"][-1][1]) == pytest.approx(0.1513435, rel=rel_tol)
+
+
+def test_marshak_wave():
+    argv = ["--res", "1", "--no-save", "--no-plot"]
+    sim = run_example_main("examples/marshak_wave/marshak_wave.py", argv=argv)
+
+    for r0, result in sim.results.items():
+        # the heat front follows the paper's diffusion equation (to within a
+        # cell, as the front is located on the mesh)
+        dr = result["r"][1] - result["r"][0]
+        for t in (1.0, 2.0, 3.0):
+            i = jnp.argmin(jnp.abs(result["times"] - t))
+            depth = result["front"][i] - r0
+            depth_ref = result["front_ref"][i] - r0
+            assert abs(depth - depth_ref) < 0.03 * depth_ref + dr
+
+        # and so does the temperature behind it
+        T_ref = jnp.interp(result["r"], result["r_ref"], result["T_ref"][-1])
+        behind = result["r"] < result["front_ref"][-1] - 0.02
+        assert jnp.max(jnp.abs(result["T"][-1] - T_ref)[behind]) < 0.05
+
+    # the wave slows down as it spreads out
+    depths = [res["front"][-1] - r0 for r0, res in sim.results.items()]
+    assert jnp.all(jnp.diff(jnp.array(depths)) < 0.0)

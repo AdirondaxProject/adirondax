@@ -97,6 +97,9 @@ Check out the [`examples/`](https://github.com/AdirondaxProject/adirondax/tree/m
   <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/crooked_pipe">
     <img src="examples/crooked_pipe/movie.gif" alt="crooked_pipe" height="128"/>
   </a>
+  <a href="https://github.com/AdirondaxProject/adirondax/tree/main/examples/marshak_wave">
+    <img src="examples/marshak_wave/movie.gif" alt="marshak_wave" height="128"/>
+  </a>
   <br>
 </p>
 

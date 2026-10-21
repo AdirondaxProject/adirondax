@@ -26,6 +26,7 @@ from .rt2d import _MIRRORED, _converged, _face_areas_x, _solve_temperature
 # Not yet included: the Doppler shift of photons between frequency groups.
 
 LIMITERS = ("levermore_pomraning", "larsen", "max", "none")
+FACE_AVERAGES = ("harmonic", "arithmetic")
 
 
 def _diffusion_coefficient(sigma, g, c, limiter):
@@ -54,6 +55,29 @@ def _diffusion_coefficient(sigma, g, c, limiter):
         raise ValueError(f"unknown flux limiter: '{limiter}'")
 
     return c * D
+
+
+def _face_coefficient(s_lo, s_hi, g, c, limiter, face_average):
+    """
+    The diffusion coefficient D and the flux limiter lambda = sigma D / c on a
+    face between cells of opacities s_lo and s_hi. The face opacity is either
+    their mean ('harmonic': the harmonic mean of the cells' diffusion
+    coefficients, right for steady flow across a material interface) or their
+    harmonic mean ('arithmetic': the arithmetic mean of the cells' diffusion
+    coefficients, right for a heat front in one material, where the opacity of
+    the cold side would otherwise choke the flux). The flux limiter then acts
+    on the face opacity.
+    """
+
+    if face_average == "harmonic":
+        sigma = 0.5 * (s_lo + s_hi)
+    elif face_average == "arithmetic":
+        tiny = jnp.finfo(jnp.result_type(s_lo, s_hi)).tiny
+        sigma = 2.0 * s_lo * s_hi / jnp.maximum(s_lo + s_hi, tiny)
+    else:
+        raise ValueError(f"unknown face average: '{face_average}'")
+    D = _diffusion_coefficient(sigma, g, c, limiter)
+    return D, sigma * D / c
 
 
 def _pad(f, axis, bc, ghost=None, odd=False):
@@ -102,7 +126,7 @@ def _set_ends(f, axis, lo, hi):
     return f.at[..., 0].set(lo).at[..., -1].set(hi)
 
 
-def _conductance(E, sigma_t, dx, c, limiter, axis, bc, ghost):
+def _conductance(E, sigma_t, dx, c, limiter, axis, bc, ghost, face_average):
     """
     The conductance k of each face along an axis, such that the flux across it
     is k (E_below - E_above). At an 'outflow' or 'driven' boundary the half
@@ -115,17 +139,16 @@ def _conductance(E, sigma_t, dx, c, limiter, axis, bc, ghost):
     s_lo, s_hi = _sides(_pad_edges(sigma_t, axis, bc), axis)
 
     tiny = jnp.finfo(E.dtype).tiny
-    sigma = 0.5 * (s_lo + s_hi)
     E_face = 0.5 * (jnp.abs(E_lo) + jnp.abs(E_hi))
     g = jnp.abs(E_hi - E_lo) / jnp.maximum(dx * E_face, tiny)
-    k = _diffusion_coefficient(sigma, g, c, limiter) / dx
+    k = _face_coefficient(s_lo, s_hi, g, c, limiter, face_average)[0] / dx
 
     if bc in _MIRRORED:
         zero = jnp.zeros_like(lax.index_in_dim(k, 0, axis + 1, keepdims=False))
         k = _set_ends(k, axis, zero, zero)
     elif bc in ("outflow", "driven"):
         # the gradient across the half cell to the boundary is twice as steep
-        D_b = _diffusion_coefficient(sigma, 2.0 * g, c, limiter)
+        D_b = _face_coefficient(s_lo, s_hi, 2.0 * g, c, limiter, face_average)[0]
         k_b = 1.0 / (0.5 * dx / jnp.maximum(D_b, tiny) + 2.0 / c)
         ax = axis + 1
         k = _set_ends(
@@ -152,7 +175,7 @@ def _pad_velocity(v, axis, bc):
     return _pad_edges(v, axis, bc)
 
 
-def _flux_limiter(E, sigma_t, dx, limiter, axis, bc, ghost):
+def _flux_limiter(E, sigma_t, dx, limiter, axis, bc, ghost, face_average):
     """
     lambda grad E on the faces along an axis: the radiation force per unit
     volume is minus this (the c's cancel)
@@ -162,11 +185,10 @@ def _flux_limiter(E, sigma_t, dx, limiter, axis, bc, ghost):
     s_lo, s_hi = _sides(_pad_edges(sigma_t, axis, bc), axis)
 
     tiny = jnp.finfo(E.dtype).tiny
-    sigma = 0.5 * (s_lo + s_hi)
     grad = (E_hi - E_lo) / dx
     E_face = 0.5 * (jnp.abs(E_lo) + jnp.abs(E_hi))
     g = jnp.abs(E_hi - E_lo) / jnp.maximum(dx * E_face, tiny)
-    lam = sigma * _diffusion_coefficient(sigma, g, 1.0, limiter)
+    lam = _face_coefficient(s_lo, s_hi, g, 1.0, limiter, face_average)[1]
     if bc in _MIRRORED:
         zero = jnp.zeros_like(lax.index_in_dim(lam, 0, axis + 1, keepdims=False))
         lam = _set_ends(lam, axis, zero, zero)
@@ -183,7 +205,9 @@ def _divergence(F_x, F_y, A_x, A_y, vol):
     ) / vol
 
 
-def _moving_gas(E, sigma_t, W, geom, A_x, A_y, dt, limiter, bc_x, bc_y, ghosts):
+def _moving_gas(
+    E, sigma_t, W, geom, A_x, A_y, dt, limiter, bc_x, bc_y, ghosts, face_average
+):
     """
     The explicit, first order in v/c coupling to a moving gas: the radiation is
     carried with the gas, with its enthalpy (1 + lambda) E, and pushes on it with
@@ -200,7 +224,9 @@ def _moving_gas(E, sigma_t, W, geom, A_x, A_y, dt, limiter, bc_x, bc_y, ghosts):
         ((vx, geom["dx"], bc_x), (vy, geom["dy"], bc_y))
     ):
         ghost = ghosts[axis]
-        lam, lam_grad = _flux_limiter(E, sigma_t, dx, limiter, axis, bc, ghost)
+        lam, lam_grad = _flux_limiter(
+            E, sigma_t, dx, limiter, axis, bc, ghost, face_average
+        )
         v_face = 0.5 * sum(_sides(_pad_velocity(v, axis, bc), axis))
         E_lo, E_hi = _sides(_pad(E, axis, bc, ghost), axis)
         upwind = jnp.where(v_face > 0.0, E_lo, E_hi)
@@ -242,6 +268,7 @@ def radiation_fld2d_step(
     ghost_x=None,
     ghost_y=None,
     flux_limiter="levermore_pomraning",
+    face_average="harmonic",
     tol=1.0e-4,
     max_iter=1000,
     max_newton=50,
@@ -288,6 +315,14 @@ def radiation_fld2d_step(
     flux_limiter: str
       'levermore_pomraning', 'larsen' (n = 2), 'max', or 'none' (plain
       diffusion, which does not limit the flux in optically thin gas).
+    face_average: str
+      How the diffusion coefficient on a face is formed from those of the cells
+      on either side: their harmonic mean ('harmonic', from the mean opacity,
+      right for steady flow across a material interface) or their arithmetic
+      mean ('arithmetic', right for a heat front moving into cold material,
+      whose high opacity would otherwise choke it; with a flux limiter, it can
+      make the solution oscillate at a sharp interface between optically thin
+      and thick material).
     tol: float
       Tolerance of the Newton iteration: it stops once its last update of the
       energy densities, summed over the grid, is this fraction of their change
@@ -335,7 +370,18 @@ def radiation_fld2d_step(
         E_star = E
     else:
         E_star, d_mom_x, d_mom_y, d_energy = _moving_gas(
-            E, sigma_t, W, geom, A_x, A_y, dt, flux_limiter, bc_x, bc_y, ghosts
+            E,
+            sigma_t,
+            W,
+            geom,
+            A_x,
+            A_y,
+            dt,
+            flux_limiter,
+            bc_x,
+            bc_y,
+            ghosts,
+            face_average,
         )
 
     # The face conductances, with the flux limiter evaluated from the energy
@@ -343,8 +389,12 @@ def radiation_fld2d_step(
     # step) would let the radiation diffuse without limit through gas it has
     # not yet reached, where the energy density is still flat.
     def conductances(E):
-        k_x = _conductance(E, sigma_t, geom["dx"], c, flux_limiter, 0, bc_x, ghost_x)
-        k_y = _conductance(E, sigma_t, geom["dy"], c, flux_limiter, 1, bc_y, ghost_y)
+        k_x = _conductance(
+            E, sigma_t, geom["dx"], c, flux_limiter, 0, bc_x, ghost_x, face_average
+        )
+        k_y = _conductance(
+            E, sigma_t, geom["dy"], c, flux_limiter, 1, bc_y, ghost_y, face_average
+        )
         return k_x, k_y
 
     def diffusion(E, k):
@@ -492,7 +542,9 @@ def radiation_fld2d_step(
     return {**W, "vx": vx_new, "vy": vy_new, "P": P_new}, E_new
 
 
-def radiation_fld_flux(E, opacity, geom, c, flux_limiter="levermore_pomraning"):
+def radiation_fld_flux(
+    E, opacity, geom, c, flux_limiter="levermore_pomraning", face_average="harmonic"
+):
     """
     The radiation flux F = -D grad E of each group at the cell centers, for
     periodic boundaries: a diagnostic, returned as (F_x, F_y)
@@ -501,7 +553,9 @@ def radiation_fld_flux(E, opacity, geom, c, flux_limiter="levermore_pomraning"):
     sigma_t = jnp.broadcast_to(opacity["sigma_s"] + opacity["sigma_a"], E.shape)
     fluxes = []
     for axis, dx in enumerate((geom["dx"], geom["dy"])):
-        k = _conductance(E, sigma_t, dx, c, flux_limiter, axis, "periodic", None)
+        k = _conductance(
+            E, sigma_t, dx, c, flux_limiter, axis, "periodic", None, face_average
+        )
         E_lo, E_hi = _sides(_pad(E, axis, "periodic"), axis)
         F = k * (E_lo - E_hi)
         ax = axis + 1
