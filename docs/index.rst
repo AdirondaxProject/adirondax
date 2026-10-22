@@ -8,7 +8,7 @@ adirondax
       :columns: 12 12 12 12
       :class-card: adirondax-summary
 
-      .. image:: _static/adirondax.png
+      .. image:: _static/adirondax-logo.png
          :alt: Adirondax logo
          :width: 96px
          :align: left
