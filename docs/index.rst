@@ -13,7 +13,7 @@ adirondax
          :width: 96px
          :align: left
 
-      **Adirondax** is a scientific research software for conducting computational physics and astrophysics simulations and solving inverse problems, implemented in JAX and utilizing automatic differentiation and multi-GPU acceleration.
+      **Adirondax** is a scientific research software for conducting astrophysical simulations and solving inverse problems, implemented in JAX and utilizing automatic differentiation and multi-GPU acceleration.
 
 
 .. grid:: 3
@@ -22,21 +22,21 @@ adirondax
    :padding: 0
    :gutter: 0
 
-   .. grid-item-card:: Differentiable Physics
+   .. grid-item-card:: Differentiable
       :columns: 12 6 6 4
       :class-card: sd-border-0
       :shadow: None
 
       Solvers in Adirondax are fully differentiable, enabling gradient-based inference, parameter optimization, and coupling to ML models directly through the simulation.
 
-   .. grid-item-card:: Scalable Performance
+   .. grid-item-card:: Scalable
       :columns: 12 6 6 4
       :class-card: sd-border-0
       :shadow: None
 
       Built with JAX, Adirondax scales on multiple GPUs/TPUs, allowing large-scale simulations to run efficiently on modern accelerators.
 
-   .. grid-item-card:: Modular & Composable
+   .. grid-item-card:: Modular
       :columns: 12 6 6 4
       :class-card: sd-border-0
       :shadow: None

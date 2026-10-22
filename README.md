@@ -40,7 +40,7 @@ A differentiable physics simulator in JAX
 
 Author: [Philip Mocz (@pmocz)](https://github.com/pmocz/)
 
-Adirondax is a high-performance scientific research software for conducting computational physics and astrophysics simulations. Being differentiable, Adirondax can seamlessly integrate with pipelines for inverse-problems, inference, optimization, and coupling to ML models. Adirondax is scalable on multiple GPUs.
+Adirondax is a high-performance scientific research software for conducting astrophysical and cosmological simulations. Being differentiable, Adirondax can seamlessly integrate with pipelines for inverse-problems, inference, optimization, and coupling to ML models. Adirondax is scalable on multiple GPUs.
 
 Adirondax has a simpler companion project dedicated to Fuzzy Dark Matter simulations: [Jaxion](https://github.com/JaxionProject/jaxion)
 

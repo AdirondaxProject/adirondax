@@ -70,9 +70,9 @@ def test_kelvin_helmholtz():
 
     # mass is conserved exactly by the finite volume scheme
     assert jnp.mean(sim.state["rho"]) == pytest.approx(1.5, rel=rel_tol)
-    assert jnp.max(sim.state["rho"]) == pytest.approx(2.083289, rel=rel_tol)
-    assert jnp.mean(jnp.abs(sim.state["vy"])) == pytest.approx(0.00497184, rel=rel_tol)
-    assert jnp.mean(sim.state["P"]) == pytest.approx(2.525596, rel=rel_tol)
+    assert jnp.max(sim.state["rho"]) == pytest.approx(2.083679, rel=rel_tol)
+    assert jnp.mean(jnp.abs(sim.state["vy"])) == pytest.approx(0.00503404, rel=rel_tol)
+    assert jnp.mean(sim.state["P"]) == pytest.approx(2.525566, rel=rel_tol)
 
 
 def test_orszag_tang():
@@ -111,9 +111,9 @@ def test_sedov():
     assert sim.state["t"] > 0.0
 
     # the blast is still well inside the box, so the ambient medium is intact
-    assert jnp.max(sim.state["rho"]) == pytest.approx(1.822437, rel=rel_tol)
-    assert jnp.mean(sim.state["rho"]) == pytest.approx(0.9667935, rel=rel_tol)
-    assert jnp.mean(sim.state["P"]) == pytest.approx(0.222086, rel=rel_tol)
+    assert jnp.max(sim.state["rho"]) == pytest.approx(1.820420, rel=rel_tol)
+    assert jnp.mean(sim.state["rho"]) == pytest.approx(0.9666657, rel=rel_tol)
+    assert jnp.mean(sim.state["P"]) == pytest.approx(0.2220465, rel=rel_tol)
 
 
 def test_sod():

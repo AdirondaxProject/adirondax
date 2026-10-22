@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 
 from .boundary import (
@@ -176,45 +177,40 @@ def get_flux_llf(WL, WR, gamma):
         + 0.5 * B_sq_R
     )
 
-    # compute star (averaged) states
-    rho_star = 0.5 * (rho_L + rho_R)
-    momx_star = 0.5 * (rho_L * vx_L + rho_R * vx_R)
-    momt_star = tuple(0.5 * (rho_L * a + rho_R * b) for a, b in zip(vt_L, vt_R))
-    en_star = 0.5 * (en_L + en_R)
-    Bx_star = 0.5 * (Bx_L + Bx_R)
-    Bt_star = tuple(0.5 * (a + b) for a, b in zip(Bt_L, Bt_R))
+    # the normal field is continuous across the face
+    Bxi = 0.5 * (Bx_L + Bx_R)
 
-    B_sq_star = Bx_star**2 + dot(Bt_star, Bt_star)
-    P_star = (gamma - 1.0) * (
-        en_star
-        - 0.5 * (momx_star**2 + dot(momt_star, momt_star)) / rho_star
-        - 0.5 * B_sq_star
-    ) + 0.5 * B_sq_star
+    def side_flux(rho, vx, vt, P, Bt, en):
+        """Physical flux of one side; P is the total pressure"""
+        return (
+            rho * vx,
+            rho * vx**2 + P - Bxi**2,
+            tuple(rho * vx * v - Bxi * B for v, B in zip(vt, Bt)),
+            (en + P) * vx - Bxi * (Bxi * vx + dot(vt, Bt)),
+            tuple(B * vx - Bxi * v for v, B in zip(vt, Bt)),
+        )
 
-    # compute fluxes
-    flux_Mass = momx_star
-    flux_Momx = momx_star**2 / rho_star + P_star - Bx_star * Bx_star
-    flux_Momt = tuple(
-        momx_star * m / rho_star - Bx_star * B for m, B in zip(momt_star, Bt_star)
-    )
-    flux_Energy = (en_star + P_star) * momx_star / rho_star - Bx_star * (
-        Bx_star * momx_star + dot(Bt_star, momt_star)
-    ) / rho_star
-    flux_Bt = tuple(
-        (B * momx_star - Bx_star * m) / rho_star for m, B in zip(momt_star, Bt_star)
+    # compute fluxes: the mean of the left and right fluxes
+    F_L = side_flux(rho_L, vx_L, vt_L, P_L, Bt_L, en_L)
+    F_R = side_flux(rho_R, vx_R, vt_R, P_R, Bt_R, en_R)
+    flux_Mass, flux_Momx, flux_Momt, flux_Energy, flux_Bt = jax.tree.map(
+        lambda a, b: 0.5 * (a + b), F_L, F_R
     )
 
-    # find wavespeeds
-    c0_L = jnp.sqrt(gamma * (P_L - 0.5 * B_sq_L) / rho_L)
-    c0_R = jnp.sqrt(gamma * (P_R - 0.5 * B_sq_R) / rho_R)
-    ca_L = jnp.sqrt(B_sq_L / rho_L)
-    ca_R = jnp.sqrt(B_sq_R / rho_R)
-    cf_L = jnp.sqrt(
-        0.5 * (c0_L**2 + ca_L**2) + 0.5 * jnp.sqrt((c0_L**2 + ca_L**2) ** 2)
-    )
-    cf_R = jnp.sqrt(
-        0.5 * (c0_R**2 + ca_R**2) + 0.5 * jnp.sqrt((c0_R**2 + ca_R**2) ** 2)
-    )
+    # find wavespeeds: the fast magnetosonic speed normal to the face
+    def fast_speed(rho, P, B_sq, Bx):
+        a_sq = gamma * (P - 0.5 * B_sq) / rho
+        ca_sq = B_sq / rho
+        cax_sq = Bx**2 / rho
+        # (a^2 + ca^2)^2 - 4 a^2 cax^2 >= (a^2 - ca^2)^2 >= 0; its square root
+        # is guarded at zero (a = cax), where its derivative is infinite
+        disc = (a_sq + ca_sq) ** 2 - 4.0 * a_sq * cax_sq
+        is_pos = disc > 0.0
+        root = jnp.where(is_pos, jnp.sqrt(jnp.where(is_pos, disc, 1.0)), 0.0)
+        return jnp.sqrt(0.5 * (a_sq + ca_sq + root))
+
+    cf_L = fast_speed(rho_L, P_L, B_sq_L, Bx_L)
+    cf_R = fast_speed(rho_R, P_R, B_sq_R, Bx_R)
     C_L = cf_L + jnp.abs(vx_L)
     C_R = cf_R + jnp.abs(vx_R)
     C = jnp.maximum(C_L, C_R)
@@ -290,8 +286,8 @@ def get_flux_hlld(WL, WR, gamma):
     cfr = jnp.sqrt((gpbr + jnp.sqrt(gpbr**2 - 4.0 * gpr * Bxsq)) / (2.0 * rho_R))
     cfmax = jnp.maximum(cfl, cfr)
 
-    spd1 = (vx_L - cfmax) * (vx_L <= vx_R) + (vx_R - cfmax) * (vx_L > vx_R)
-    spd5 = (vx_R + cfmax) * (vx_L <= vx_R) + (vx_L + cfmax) * (vx_L > vx_R)
+    spd1 = jnp.minimum(vx_L, vx_R) - cfmax
+    spd5 = jnp.maximum(vx_L, vx_R) + cfmax
 
     # Step 3
     # Compute L/R fluxes
@@ -344,18 +340,24 @@ def get_flux_hlld(WL, WR, gamma):
     # eqn (39) of M&K
     ULst_Mx = ULst_d * spd3
     # ULst_Bx = Bxi
-    isDegenL = jnp.abs(rho_L * sdl * sdml / Bxsq - 1.0) < epsilon
+    # The branches below are chosen with jnp.where, never by multiplying with a
+    # mask: the branch not taken may be infinite (0 * inf = nan), and its
+    # derivative is propagated too. Denominators that vanish where a branch is
+    # not taken are replaced by 1 there.
+    denom = rho_L * sdl * sdml - Bxsq
+    isDegenL = jnp.abs(denom) < epsilon * Bxsq
+    denom = jnp.where(isDegenL, 1.0, denom)
 
     # eqns (44) and (46) of M&K
-    tmp = Bxi * (sdl - sdml) / (rho_L * sdl * sdml - Bxsq)
+    tmp = Bxi * (sdl - sdml) / denom
     ULst_Mt = tuple(
-        (ULst_d * v) * isDegenL + (ULst_d * (v - B * tmp)) * (~isDegenL)
+        jnp.where(isDegenL, ULst_d * v, ULst_d * (v - B * tmp))
         for v, B in zip(vt_L, Bt_L)
     )
 
     # eqns (45) and (47) of M&K
-    tmp = (rho_L * (sdl) ** 2 - Bxsq) / (rho_L * sdl * sdml - Bxsq)
-    ULst_Bt = tuple(B * isDegenL + (B * tmp) * (~isDegenL) for B in Bt_L)
+    tmp = (rho_L * (sdl) ** 2 - Bxsq) / denom
+    ULst_Bt = tuple(jnp.where(isDegenL, B, B * tmp) for B in Bt_L)
 
     vbstl = (ULst_Mx * Bxi + dot(ULst_Mt, ULst_Bt)) / ULst_d
     # eqn (48) of M&K
@@ -372,18 +374,20 @@ def get_flux_hlld(WL, WR, gamma):
     # eqn (39) of M&K
     URst_Mx = URst_d * spd3
     # URst_Bx = Bxi
-    isDegenR = jnp.abs(rho_R * sdr * sdmr / Bxsq - 1.0) < epsilon
+    denom = rho_R * sdr * sdmr - Bxsq
+    isDegenR = jnp.abs(denom) < epsilon * Bxsq
+    denom = jnp.where(isDegenR, 1.0, denom)
 
     # eqns (44) and (46) of M&K
-    tmp = Bxi * (sdr - sdmr) / (rho_R * sdr * sdmr - Bxsq)
+    tmp = Bxi * (sdr - sdmr) / denom
     URst_Mt = tuple(
-        (URst_d * v) * isDegenR + (URst_d * (v - B * tmp)) * (~isDegenR)
+        jnp.where(isDegenR, URst_d * v, URst_d * (v - B * tmp))
         for v, B in zip(vt_R, Bt_R)
     )
 
     # eqns (45) and (47) of M&K
-    tmp = (rho_R * (sdr) ** 2 - Bxsq) / (rho_R * sdr * sdmr - Bxsq)
-    URst_Bt = tuple(B * isDegenR + (B * tmp) * (~isDegenR) for B in Bt_R)
+    tmp = (rho_R * (sdr) ** 2 - Bxsq) / denom
+    URst_Bt = tuple(jnp.where(isDegenR, B, B * tmp) for B in Bt_R)
 
     vbstr = (URst_Mx * Bxi + dot(URst_Mt, URst_Bt)) / URst_d
     # eqn (48) of M&K
@@ -396,79 +400,71 @@ def get_flux_hlld(WL, WR, gamma):
 
     WRst_vt = tuple(M / URst_d for M in URst_Mt)
 
-    # Ul** and Ur**  - if Bx is zero, same as *-states
-    # if(Bxi == 0.0)
-    isDegen = 0.5 * Bxsq / jnp.minimum(pbl, pbr) < (epsilon) ** 2
-    ULdst_d = ULst_d * isDegen
-    ULdst_Mx = ULst_Mx * isDegen
-    ULdst_Mt = tuple(M * isDegen for M in ULst_Mt)
-    ULdst_Bt = tuple(B * isDegen for B in ULst_Bt)
-    ULdst_E = ULst_E * isDegen
+    # Ul** and Ur**: if Bx is zero, the same as the *-states (the comparison
+    # holds, rather than giving 0/0, when the field vanishes altogether)
+    isDegen = 0.5 * Bxsq <= epsilon**2 * jnp.minimum(pbl, pbr)
 
-    URdst_d = URst_d * isDegen
-    URdst_Mx = URst_Mx * isDegen
-    URdst_Mt = tuple(M * isDegen for M in URst_Mt)
-    URdst_Bt = tuple(B * isDegen for B in URst_Bt)
-    URdst_E = URst_E * isDegen
+    # the density and normal momentum do not change across the Alfven waves
+    ULdst_d, URdst_d = ULst_d, URst_d
+    ULdst_Mx, URdst_Mx = ULst_Mx, URst_Mx
 
-    # else
     invsumd = 1.0 / (sqrtdl + sqrtdr)
     Bxsig = jnp.sign(Bxi)
-
-    ULdst_d = ULdst_d + ULst_d * (~isDegen)
-    URdst_d = URdst_d + URst_d * (~isDegen)
-
-    ULdst_Mx = ULdst_Mx + ULst_Mx * (~isDegen)
-    URdst_Mx = URdst_Mx + URst_Mx * (~isDegen)
 
     # eqn (59) of M&K
     tmp_v = tuple(
         invsumd * (sqrtdl * wl + sqrtdr * wr + Bxsig * (bR - bL))
         for wl, wr, bR, bL in zip(WLst_vt, WRst_vt, URst_Bt, ULst_Bt)
     )
-    ULdst_Mt = tuple(M + ULdst_d * t * (~isDegen) for M, t in zip(ULdst_Mt, tmp_v))
-    URdst_Mt = tuple(M + URdst_d * t * (~isDegen) for M, t in zip(URdst_Mt, tmp_v))
+    ULdst_Mt = tuple(jnp.where(isDegen, M, ULdst_d * t) for M, t in zip(ULst_Mt, tmp_v))
+    URdst_Mt = tuple(jnp.where(isDegen, M, URdst_d * t) for M, t in zip(URst_Mt, tmp_v))
 
     # eqn (61) of M&K
     tmp_b = tuple(
         invsumd * (sqrtdl * bR + sqrtdr * bL + Bxsig * sqrtdl * sqrtdr * (wr - wl))
         for bR, bL, wl, wr in zip(URst_Bt, ULst_Bt, WLst_vt, WRst_vt)
     )
-    ULdst_Bt = tuple(B + t * (~isDegen) for B, t in zip(ULdst_Bt, tmp_b))
-    URdst_Bt = tuple(B + t * (~isDegen) for B, t in zip(URdst_Bt, tmp_b))
+    ULdst_Bt = tuple(jnp.where(isDegen, B, t) for B, t in zip(ULst_Bt, tmp_b))
+    URdst_Bt = tuple(jnp.where(isDegen, B, t) for B, t in zip(URst_Bt, tmp_b))
 
     # eqn (63) of M&K
     tmp = spd3 * Bxi + dot(ULdst_Mt, ULdst_Bt) / ULdst_d
-    ULdst_E = ULdst_E + (ULst_E - sqrtdl * Bxsig * (vbstl - tmp)) * (~isDegen)
-    URdst_E = URdst_E + (URst_E + sqrtdr * Bxsig * (vbstr - tmp)) * (~isDegen)
+    ULdst_E = jnp.where(isDegen, ULst_E, ULst_E - sqrtdl * Bxsig * (vbstl - tmp))
+    URdst_E = jnp.where(isDegen, URst_E, URst_E + sqrtdr * Bxsig * (vbstr - tmp))
 
     # Step 7
     # Compute flux
 
-    # Which of the six regions the interface sits in. These have to be built
-    # as a mutually exclusive chain, not as independent conditions: when the
-    # normal field vanishes the Alfven speeds collapse onto the contact
-    # (spd2 = spd3 = spd4), and independent conditions then select two regions
-    # at once and add the flux twice.
-    in_L = spd1 >= 0
-    in_R = (~in_L) & (spd5 <= 0)
-    rest = (~in_L) & (~in_R)
-    in_Lst = rest & (spd2 >= 0)
-    rest = rest & (~in_Lst)
-    in_Ldst = rest & (spd3 >= 0)
-    rest = rest & (~in_Ldst)
-    in_Rdst = rest & (spd4 > 0)
-    in_Rst = rest & (~in_Rdst)
+    # Which of the six regions the interface sits in. These have to be tested
+    # as a chain, each only where the ones before it fail: when the normal
+    # field vanishes the Alfven speeds collapse onto the contact
+    # (spd2 = spd3 = spd4), and independent conditions would then select two
+    # regions at once.
     tmpl = spd2 - spd1
     tmpr = spd4 - spd5
 
     def assemble(FL, FR, UL, UR, ULst, URst, ULdst, URdst):
-        flux = FL * in_L + FR * in_R
-        flux += (FL + spd1 * (ULst - UL)) * in_Lst
-        flux += (FL - spd1 * UL - tmpl * ULst + spd2 * ULdst) * in_Ldst
-        flux += (FR - spd5 * UR - tmpr * URst + spd4 * URdst) * in_Rdst
-        flux += (FR + spd5 * (URst - UR)) * in_Rst
-        return flux
+        return jnp.where(
+            spd1 >= 0,
+            FL,
+            jnp.where(
+                spd5 <= 0,
+                FR,
+                jnp.where(
+                    spd2 >= 0,
+                    FL + spd1 * (ULst - UL),
+                    jnp.where(
+                        spd3 >= 0,
+                        FL - spd1 * UL - tmpl * ULst + spd2 * ULdst,
+                        jnp.where(
+                            spd4 > 0,
+                            FR - spd5 * UR - tmpr * URst + spd4 * URdst,
+                            FR + spd5 * (URst - UR),
+                        ),
+                    ),
+                ),
+            ),
+        )
 
     flux_Mass = assemble(FL_d, FR_d, rho_L, rho_R, ULst_d, URst_d, ULdst_d, URdst_d)
     flux_Momx = assemble(FL_Mx, FR_Mx, Mx_L, Mx_R, ULst_Mx, URst_Mx, ULdst_Mx, URdst_Mx)

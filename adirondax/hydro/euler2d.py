@@ -72,24 +72,13 @@ def get_flux_llf(WL, WR, gamma):
     en_L = P_L / (gamma - 1.0) + 0.5 * rho_L * v_sq_L
     en_R = P_R / (gamma - 1.0) + 0.5 * rho_R * v_sq_R
 
-    # compute star (averaged) states
-    rho_star = 0.5 * (rho_L + rho_R)
-    momx_star = 0.5 * (rho_L * vx_L + rho_R * vx_R)
-    momy_star = 0.5 * (rho_L * vy_L + rho_R * vy_R)
-    en_star = 0.5 * (en_L + en_R)
-
-    mom_sq_star = momx_star**2 + momy_star**2
-    if has_rotation:
-        momz_star = 0.5 * (rho_L * vz_L + rho_R * vz_R)
-        mom_sq_star = mom_sq_star + momz_star**2
-
-    P_star = (gamma - 1.0) * (en_star - 0.5 * mom_sq_star / rho_star)
-
-    # compute fluxes (local Lax-Friedrichs/Rusanov)
-    flux_Mass = momx_star
-    flux_Momx = momx_star**2 / rho_star + P_star
-    flux_Momy = momx_star * momy_star / rho_star
-    flux_Energy = (en_star + P_star) * momx_star / rho_star
+    # compute fluxes (local Lax-Friedrichs/Rusanov): the mean of the left and
+    # right fluxes, which keeps the density and pressure positive under the
+    # CFL condition
+    flux_Mass = 0.5 * (rho_L * vx_L + rho_R * vx_R)
+    flux_Momx = 0.5 * (rho_L * vx_L**2 + P_L + rho_R * vx_R**2 + P_R)
+    flux_Momy = 0.5 * (rho_L * vx_L * vy_L + rho_R * vx_R * vy_R)
+    flux_Energy = 0.5 * ((en_L + P_L) * vx_L + (en_R + P_R) * vx_R)
 
     # find wavespeeds (the azimuthal velocity advects nothing across the face
     # in axisymmetry, so it does not enter the signal speed)
@@ -110,7 +99,7 @@ def get_flux_llf(WL, WR, gamma):
         "energy": flux_Energy,
     }
     if has_rotation:
-        flux_Momz = momx_star * momz_star / rho_star
+        flux_Momz = 0.5 * (rho_L * vx_L * vz_L + rho_R * vx_R * vz_R)
         flux_Momz -= C * 0.5 * (rho_R * vz_R - rho_L * vz_L)
         flux["momz"] = flux_Momz
 
