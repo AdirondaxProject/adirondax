@@ -8,14 +8,17 @@ import orbax.checkpoint as ocp
 
 from .constants import code_constants
 from .gravity import calculate_gravitational_potential, get_acceleration
-from .hydro.common2d import get_avg
 from .hydro.euler2d import (
     hydro_euler2d_accelerate,
     hydro_euler2d_fluxes,
     hydro_euler2d_timestep,
 )
 from .hydro.geometry import get_geometry
-from .hydro.mhd2d import hydro_mhd2d_fluxes, hydro_mhd2d_timestep
+from .hydro.mhd2d import (
+    get_cell_centered_field,
+    hydro_mhd2d_fluxes,
+    hydro_mhd2d_timestep,
+)
 from .quantum import quantum_drift, quantum_kick, quantum_timestep
 from .radiation.angles import get_angles
 from .radiation.fld2d import radiation_fld2d_step
@@ -24,6 +27,20 @@ from .radiation.rt2d import radiation_rt2d_step
 from .utils import print_parameters, set_up_parameters
 from .validation import validate_params
 from .visualization import plot_sim
+
+
+def _check_finite(state, message):
+    """
+    Raise FloatingPointError, with message formatted with the offending keys,
+    if any field of the state is not finite. Skipped when the state is being
+    traced (under jit or grad), where its values are not known.
+    """
+
+    if any(isinstance(f, jax.core.Tracer) for f in jax.tree.leaves(state)):
+        return
+    bad = [k for k, f in state.items() if not bool(jnp.all(jnp.isfinite(f)))]
+    if bad:
+        raise FloatingPointError(message.format(keys=", ".join(bad)))
 
 
 class Simulation:
@@ -83,9 +100,7 @@ class Simulation:
             self.state["bx"] = jnp.zeros(self.resolution) + jnp.nan
             self.state["by"] = jnp.zeros(self.resolution) + jnp.nan
         if self.params["physics"]["quantum"]:
-            self.state["psi"] = (
-                jnp.zeros(self.resolution, dtype=jnp.complex64) + jnp.nan
-            )
+            self.state["psi"] = jnp.zeros(self.resolution, dtype=complex) + jnp.nan
         if self.params["physics"]["radiation"]:
             if self.params["radiation"]["method"] == "diffusion":
                 self.state["Er"] = (
@@ -98,7 +113,7 @@ class Simulation:
                 )
 
         # extra info to keep track of
-        self.state["steps_taken"] = jnp.array(0) + jnp.nan
+        self.state["steps_taken"] = jnp.array(0)
 
         # functions
         self.external_potential = None
@@ -417,6 +432,16 @@ class Simulation:
         def driven_ghosts(state, axis, bc):
             return to_hydro(driven_boundary(state, axis)) if bc == "driven" else None
 
+        def cell_centered_field(state):
+            return get_cell_centered_field(
+                state["bx"],
+                state["by"],
+                bc_x,
+                bc_y,
+                driven_ghosts(state, 0, bc_x),
+                driven_ghosts(state, 1, bc_y),
+            )
+
         def driven_radiation(state, axis, bc, key):
             if bc != "driven":
                 return None
@@ -443,7 +468,20 @@ class Simulation:
             def get_timestep(state):
                 dt = jnp.inf
                 if use_hydro:
-                    dt_hydro = hydro_timestep(to_hydro(state), gamma, dx, dy)
+                    W = to_hydro(state)
+                    if use_magnetic:
+                        dt_hydro = hydro_timestep(
+                            W,
+                            gamma,
+                            dx,
+                            dy,
+                            bc_x,
+                            bc_y,
+                            driven_ghosts(state, 0, bc_x),
+                            driven_ghosts(state, 1, bc_y),
+                        )
+                    else:
+                        dt_hydro = hydro_timestep(W, gamma, dx, dy)
                     dt = jnp.minimum(dt, cfl * dt_hydro)
                 if use_quantum:
                     dt_quantum = quantum_timestep(m_per_hbar, dx, dy)
@@ -485,7 +523,7 @@ class Simulation:
                 # radiation exchanges energy with the gas pressure alone
                 P_mag = 0.0
                 if use_magnetic:
-                    Bx, By = get_avg(state["bx"], state["by"])
+                    Bx, By = cell_centered_field(state)
                     B_sq = Bx**2 + By**2
                     if use_rotation:
                         B_sq = B_sq + state[b_out] ** 2
@@ -554,6 +592,8 @@ class Simulation:
                 if use_quantum:
                     state["psi"] = quantum_drift(state["psi"], k_sq, m_per_hbar, dt)
                 if use_hydro:
+                    ghost_x = driven_ghosts(state, 0, bc_x)
+                    ghost_y = driven_ghosts(state, 1, bc_y)
                     W = hydro_fluxes(
                         to_hydro(state),
                         geom_work,
@@ -563,10 +603,22 @@ class Simulation:
                         slope_limiting=slope_limiting,
                         bc_x=bc_x,
                         bc_y=bc_y,
-                        ghost_x=driven_ghosts(state, 0, bc_x),
-                        ghost_y=driven_ghosts(state, 1, bc_y),
+                        ghost_x=ghost_x,
+                        ghost_y=ghost_y,
                     )
-                    state = from_hydro(state, W)
+                    new_state = from_hydro(state, W)
+                    if use_magnetic and "driven" in (bc_x, bc_y):
+                        # the solver split the total energy into gas and
+                        # field with the driven boundary faces of the start
+                        # of the step; split it again with those the
+                        # boundary gives at the end, which the next step uses
+                        Bx_0, By_0 = get_cell_centered_field(
+                            W["bx"], W["by"], bc_x, bc_y, ghost_x, ghost_y
+                        )
+                        Bx_1, By_1 = cell_centered_field(new_state)
+                        dB_sq = Bx_1**2 + By_1**2 - Bx_0**2 - By_0**2
+                        new_state["P"] = new_state["P"] + (1.0 - 0.5 * gamma) * dB_sq
+                    state = new_state
                 return state
 
             def step(state):
@@ -624,6 +676,12 @@ class Simulation:
 
         advance = self._get_advance()
 
+        _check_finite(
+            state,
+            "the simulation state has non-finite values in {keys}; set every "
+            "field of sim.state (they start out as NaN) before running",
+        )
+
         # Checkpointer
         if save:
             checkpoint_dir = os.path.join(os.getcwd(), self.params["output"]["path"])
@@ -641,6 +699,13 @@ class Simulation:
         # Simulation Main Loop
         for i in range(1, num_chunks + 1):
             state = advance(state, jnp.asarray(t_span * i / num_chunks))
+            # a non-finite state also ends an adaptive time loop early, as
+            # the time itself becomes NaN
+            _check_finite(
+                state,
+                "the simulation state became non-finite in {keys} after "
+                f"t = {t_span * (i - 1) / num_chunks:g}",
+            )
             if save:
                 jax.block_until_ready(state)
                 plot_sim(state, checkpoint_dir, i, self.params)

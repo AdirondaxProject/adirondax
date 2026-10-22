@@ -21,21 +21,24 @@ _SERIES = (
 )
 _X_SWITCH = 2.0
 _NUM_EXP_TERMS = 20
+# beyond this the emission above x, ~ x^3 e^{-x}, underflows in double precision
+_X_MAX = 700.0
 
 
-def planck_fraction(x):
+def _planck_fractions(x):
     """
-    Fraction of the blackbody energy density emitted below x = h nu / (k_B T):
-    (15/pi^4) int_0^x t^3/(e^t - 1) dt, which rises from 0 at x=0 to 1 as x->inf.
+    The fractions of the blackbody energy density emitted below and above
+    x = h nu / (k_B T), each to full relative precision, even where it is tiny
     """
 
     x = jnp.asarray(x)
+    norm = 15.0 / jnp.pi**4
 
     # small x: the series converges for x < 2 pi. Clamping each branch to its
     # own range keeps the unused branch (and its gradient) finite.
     is_low = x < _X_SWITCH
     xs = jnp.where(is_low, x, _X_SWITCH)
-    low = sum(c * xs**p for p, c in _SERIES)
+    low = norm * sum(c * xs**p for p, c in _SERIES)
 
     # large x: int_x^inf t^3/(e^t-1) dt = sum_k e^{-kx} (x^3/k + 3x^2/k^2 + 6x/k^3 + 6/k^4)
     xl = jnp.where(is_low, _X_SWITCH, x)
@@ -44,9 +47,20 @@ def planck_fraction(x):
         tail = tail + jnp.exp(-k * xl) * (
             xl**3 / k + 3.0 * xl**2 / k**2 + 6.0 * xl / k**3 + 6.0 / k**4
         )
-    high = jnp.pi**4 / 15.0 - tail
+    high = norm * tail
 
-    return (15.0 / jnp.pi**4) * jnp.where(is_low, low, high)
+    below = jnp.where(is_low, low, 1.0 - high)
+    above = jnp.where(is_low, 1.0 - low, high)
+    return below, above
+
+
+def planck_fraction(x):
+    """
+    Fraction of the blackbody energy density emitted below x = h nu / (k_B T):
+    (15/pi^4) int_0^x t^3/(e^t - 1) dt, which rises from 0 at x=0 to 1 as x->inf.
+    """
+
+    return _planck_fractions(x)[0]
 
 
 def group_emission(T, group_edges, a_r):
@@ -74,9 +88,18 @@ def group_emission(T, group_edges, a_r):
         return (a_r * T**4 / (4.0 * jnp.pi))[None]
 
     edges = jnp.asarray(group_edges, dtype=T.dtype).reshape((-1,) + (1,) * T.ndim)
-    frac = planck_fraction(edges / T)
-    zero = jnp.zeros_like(frac[:1])
-    one = jnp.ones_like(frac[:1])
-    frac = jnp.concatenate((zero, frac, one), axis=0)
+    # x = edges / T, capped at _X_MAX, which keeps it (and its derivative)
+    # finite as T -> 0, where all the emission is in the lowest group
+    x = edges / jnp.maximum(T, edges / _X_MAX)
+    below, above = _planck_fractions(x)
+    zero = jnp.zeros_like(below[:1])
+    one = jnp.ones_like(below[:1])
+    below = jnp.concatenate((zero, below, one), axis=0)
+    above = jnp.concatenate((one, above, zero), axis=0)
 
-    return (a_r * T**4 / (4.0 * jnp.pi)) * (frac[1:] - frac[:-1])
+    # a group is the difference of the fractions below its edges, or, where
+    # most of the emission lies below it, of those above them, which would
+    # otherwise cancel in the Wien tail
+    frac = jnp.where(below[:-1] > 0.5, above[:-1] - above[1:], below[1:] - below[:-1])
+
+    return (a_r * T**4 / (4.0 * jnp.pi)) * frac

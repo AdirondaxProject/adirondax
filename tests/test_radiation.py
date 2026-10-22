@@ -83,6 +83,33 @@ def test_group_emission_sums_to_grey():
     assert jnp.allclose(jnp.sum(eps, axis=0), 2.0 * T**4 / (4.0 * jnp.pi), rtol=1e-13)
 
 
+def test_group_emission_is_accurate_in_the_wien_tail():
+    # nearly all the emission lies below these groups, so differencing the
+    # fractions below their edges would cancel down to round-off
+    eps = group_emission(jnp.array(1.0), (10.0, 30.0, 40.0), 4.0 * jnp.pi)
+    for f, (lo, hi) in enumerate([(30.0, 40.0), (40.0, np.inf)], start=2):
+        exact = quad(
+            lambda t: t**3 * np.exp(-t) / -np.expm1(-t),
+            lo,
+            hi,
+            epsabs=0.0,
+            epsrel=1e-13,
+        )
+        exact = 15.0 / np.pi**4 * exact[0]
+        assert float(eps[f]) == pytest.approx(exact, rel=1e-10, abs=0.0)
+
+
+def test_group_emission_is_finite_at_zero_temperature():
+    def total(T):
+        return jnp.sum(group_emission(T, (1.0, 3.0), 1.0))
+
+    eps = group_emission(jnp.array([0.0, 1.0e-3]), (1.0, 3.0), 1.0)
+    assert jnp.all(jnp.isfinite(eps))
+    assert jnp.all(eps[:, 0] == 0.0)
+    assert jnp.isfinite(jax.grad(total)(0.0))
+    assert jnp.isfinite(jax.grad(total)(1.0e-3))
+
+
 @pytest.mark.parametrize("num_polar, num_azimuthal", [(2, 2), (4, 6), (6, 8)])
 def test_angles_integrate_moments_exactly(num_polar, num_azimuthal):
     a = get_angles(num_polar, num_azimuthal)

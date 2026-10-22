@@ -9,6 +9,8 @@ from jax import lax
 
 import adirondax as adx
 from adirondax.hydro.boundary import add_ghost_cells, set_ghost_gradients
+from adirondax.hydro.geometry import get_geometry
+from adirondax.hydro.mhd2d import get_cell_centered_field, hydro_mhd2d_fluxes
 
 SWAP_XY = {"vx": "vy", "vy": "vx", "bx": "by", "by": "bx"}
 
@@ -102,7 +104,65 @@ def test_driven_boundary_that_copies_the_edge_is_outflow(magnetic, axis):
     outflow = run("outflow")
     driven = run("driven")
     for key in outflow:
-        np.testing.assert_array_equal(driven[key], outflow[key])
+        if magnetic:
+            # a driven boundary re-splits the energy into gas and field with
+            # its faces at the end of the step, which an outflow boundary
+            # does directly, so the two agree to round-off
+            np.testing.assert_allclose(driven[key], outflow[key], rtol=1e-5, atol=1e-6)
+        else:
+            np.testing.assert_array_equal(driven[key], outflow[key])
+
+
+@pytest.mark.parametrize("bc", ["outflow", "wall"])
+@pytest.mark.parametrize("axis", [0, 1])
+def test_magnetic_step_of_zero_length_changes_nothing(bc, axis):
+    # the normal field differs between the two ends of each axis, where a face
+    # average that wrapped around the domain would put the wrong magnetic
+    # energy into the edge cells, at the expense of the gas
+    n = 16
+    s = (jnp.arange(n) + 1.0) / n
+    bcs = ["periodic", "periodic"]
+    bcs[axis] = bc
+    bx = jnp.broadcast_to(s[:, None], (n, n))
+    by = -jnp.broadcast_to(s[None, :], (n, n))
+    Bx, By = get_cell_centered_field(bx, by, *bcs)
+    W = {
+        "rho": jnp.ones((n, n)),
+        "vx": jnp.zeros((n, n)),
+        "vy": jnp.zeros((n, n)),
+        "P": 1.0 + 0.5 * (Bx**2 + By**2),
+        "bx": bx,
+        "by": by,
+    }
+    geom = get_geometry("cartesian", [1.0, 1.0], [n, n])
+
+    W_new = W
+    for _ in range(3):
+        W_new = hydro_mhd2d_fluxes(
+            W_new, geom, 0.0, gamma=5.0 / 3.0, bc_x=bcs[0], bc_y=bcs[1]
+        )
+    for key, f in W.items():
+        np.testing.assert_allclose(W_new[key], f, rtol=1e-6, atol=1e-6)
+
+
+def test_unset_state_is_rejected():
+    sim = make_sim(["periodic", "periodic"])
+    state = initial_state(sim)
+    del state["t"]
+    sim.state.update(state)
+    with pytest.raises(FloatingPointError, match="non-finite values in t"):
+        sim.run()
+
+
+@pytest.mark.parametrize("num_timesteps", [20, -1])
+def test_non_finite_state_stops_the_run(num_timesteps):
+    sim = make_sim(["periodic", "periodic"])
+    sim.params["time"]["num_timesteps"] = num_timesteps
+    state = initial_state(sim)
+    state["P"] = state["P"].at[3, 3].set(-1.0)
+    sim.state.update(state)
+    with pytest.raises(FloatingPointError, match="became non-finite"):
+        sim.run()
 
 
 def test_driven_boundary_needs_a_callback():

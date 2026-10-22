@@ -333,9 +333,14 @@ def hydro_euler2d_fluxes(
 def hydro_euler2d_accelerate(W, ax, ay, gamma, geom, dt):
     U = get_conserved(W, gamma, geom)
 
-    U["energy"] = U["energy"] + dt * (U["momx"] * ax + U["momy"] * ay)
-    U["momx"] = U["momx"] + dt * U["mass"] * ax
-    U["momy"] = U["momy"] + dt * U["mass"] * ay
+    momx, momy = U["momx"], U["momy"]
+    U["momx"] = momx + dt * U["mass"] * ax
+    U["momy"] = momy + dt * U["mass"] * ay
+    # the work done by the time-centered momentum is exactly the change in
+    # kinetic energy, so the kick leaves the internal energy (the pressure) be
+    U["energy"] = U["energy"] + 0.5 * dt * (
+        (momx + U["momx"]) * ax + (momy + U["momy"]) * ay
+    )
 
     W_new = get_primitive(U, gamma, geom)
     return {**W, "vx": W_new["vx"], "vy": W_new["vy"], "P": W_new["P"]}

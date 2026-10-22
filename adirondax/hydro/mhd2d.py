@@ -78,6 +78,30 @@ def get_primitive(U, Bx, By, gamma, geom):
     return W
 
 
+def get_cell_centered_field(
+    bx, by, bc_x="periodic", bc_y="periodic", ghost_x=None, ghost_y=None
+):
+    """
+    Calculate the volume-averaged magnetic field from the face-centered one
+
+    The grid stores the field on the upper face of each cell, so the lower face
+    of the first cell along a non-periodic axis lies outside it, and takes its
+    value from the boundary condition (as the solver's ghost cells do), rather
+    than wrapping around to the far side of the domain.
+    """
+
+    b = {"bx": bx, "by": by}
+    for axis, bc, ghost in ((0, bc_x, ghost_x), (1, bc_y, ghost_y)):
+        if bc != "periodic":
+            b = add_ghost_cells(b, axis, bc, ghost)
+    Bx, By = get_avg(b["bx"], b["by"])
+    for axis, bc in ((0, bc_x), (1, bc_y)):
+        if bc != "periodic":
+            Bx, By = strip_ghosts(Bx, axis), strip_ghosts(By, axis)
+
+    return Bx, By
+
+
 def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt, geom=None):
     """
     Apply fluxes to face-centered magnetic fields in a constrained transport manner
@@ -473,13 +497,15 @@ def get_flux(WL, WR, gamma, riemann_solver):
         return get_flux_llf(WL, WR, gamma)
 
 
-def hydro_mhd2d_timestep(W, gamma, dx, dy):
+def hydro_mhd2d_timestep(
+    W, gamma, dx, dy, bc_x="periodic", bc_y="periodic", ghost_x=None, ghost_y=None
+):
     """
     Calculate the simulation timestep based on CFL condition
     """
 
     rho, vx, vy, P = W["rho"], W["vx"], W["vy"], W["P"]
-    Bx, By = get_avg(W["bx"], W["by"])
+    Bx, By = get_cell_centered_field(W["bx"], W["by"], bc_x, bc_y, ghost_x, ghost_y)
     v_sq = vx**2 + vy**2
     B_sq = Bx**2 + By**2
     if "vz" in W:
@@ -707,8 +733,9 @@ def hydro_mhd2d_fluxes(
             U = {name: strip_ghosts(f, axis) for name, f in U.items()}
             bx, by = strip_ghosts(bx, axis), strip_ghosts(by, axis)
 
-    # get Primitive variables
-    Bx, By = get_avg(bx, by)
+    # get Primitive variables, with the boundary faces set as at the start of
+    # the step, so that the total pressure is consistent with the next step
+    Bx, By = get_cell_centered_field(bx, by, bc_x, bc_y, ghost_x, ghost_y)
     W = get_primitive(U, Bx, By, gamma, geom_strip(geom, x_has_ghosts))
     W["bx"], W["by"] = bx, by
 
