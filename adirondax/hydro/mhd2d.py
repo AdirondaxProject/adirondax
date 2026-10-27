@@ -1,7 +1,9 @@
 import jax
 import jax.numpy as jnp
+from jax import lax
 
 from .boundary import (
+    _MIRRORED,
     add_ghost_cells,
     reset_ghost_cells,
     set_ghost_gradients,
@@ -79,8 +81,71 @@ def get_primitive(U, Bx, By, gamma, geom):
     return W
 
 
+def _divergence_free_lower_faces(bx, by, bc_x, bc_y, geom):
+    """
+    Set the lower boundary faces of 'outflow' and 'driven' boundaries in the
+    padded face fields so that the first cells are divergence free
+    """
+
+    dx, dy = geom["dx"], geom["dy"]
+    if geom["is_cylindrical"]:
+        Rp = geom["r_face_x"]
+        if bc_x != "periodic":
+            Rp = jnp.concatenate((Rp[:1] - dx, Rp, Rp[-1:] + dx))
+        Rm = jnp.abs(Rp - dx)
+    else:
+        Rp = Rm = jnp.ones((bx.shape[0], 1))
+    R_mid = 0.5 * (Rp + Rm)
+
+    if bc_x in ("outflow", "driven"):
+        dby = by[1] - jnp.roll(by, 1, axis=1)[1]
+        bx = bx.at[0].set((Rp[1] * bx[1] + R_mid[1] * dx / dy * dby) / Rm[1])
+    if bc_y in ("outflow", "driven"):
+        dRbx = Rp * bx[:, 1:2] - Rm * jnp.roll(bx, 1, axis=0)[:, 1:2]
+        by = by.at[:, 0:1].set(by[:, 1:2] + dy / (R_mid * dx) * dRbx)
+    return bx, by
+
+
+def _padded_cell_centered_field(bx, by, bc_x, bc_y, ghost_x, ghost_y, geom):
+    """
+    The volume-averaged magnetic field, with a ghost cell on each side of the
+    non-periodic axes
+    """
+
+    b = {"bx": bx, "by": by}
+    for axis, bc, ghost in ((0, bc_x, ghost_x), (1, bc_y, ghost_y)):
+        if bc != "periodic":
+            b = add_ghost_cells(b, axis, bc, ghost)
+    if geom is not None:
+        b["bx"], b["by"] = _divergence_free_lower_faces(
+            b["bx"], b["by"], bc_x, bc_y, geom
+        )
+    B = list(get_avg(b["bx"], b["by"]))
+    for axis, bc in ((0, bc_x), (1, bc_y)):
+        if bc == "periodic":
+            continue
+        if bc in _MIRRORED:
+            for k in (0, 1):
+                s = -1.0 if k == axis else 1.0
+                lo = s * lax.index_in_dim(B[k], 1, axis)
+                hi = s * lax.index_in_dim(B[k], -2, axis)
+                B[k] = _set_ends(B[k], axis, lo, hi)
+        else:
+            lo = lax.index_in_dim(b["bx" if axis == 0 else "by"], 0, axis)
+            B[axis] = _set_ends(B[axis], axis, lo, lax.index_in_dim(B[axis], -1, axis))
+    return B
+
+
+def _set_ends(f, axis, lo, hi):
+    """Set the first and last slices of f along an axis"""
+
+    if axis == 0:
+        return f.at[:1].set(lo).at[-1:].set(hi)
+    return f.at[:, :1].set(lo).at[:, -1:].set(hi)
+
+
 def get_cell_centered_field(
-    bx, by, bc_x="periodic", bc_y="periodic", ghost_x=None, ghost_y=None
+    bx, by, bc_x="periodic", bc_y="periodic", ghost_x=None, ghost_y=None, geom=None
 ):
     """
     Calculate the volume-averaged magnetic field from the face-centered one
@@ -88,14 +153,12 @@ def get_cell_centered_field(
     The grid stores the field on the upper face of each cell, so the lower face
     of the first cell along a non-periodic axis lies outside it, and takes its
     value from the boundary condition (as the solver's ghost cells do), rather
-    than wrapping around to the far side of the domain.
+    than wrapping around to the far side of the domain. At an 'outflow' or
+    'driven' boundary it is the face that leaves the first cells divergence
+    free, given the geometry 'geom' of the bare grid.
     """
 
-    b = {"bx": bx, "by": by}
-    for axis, bc, ghost in ((0, bc_x, ghost_x), (1, bc_y, ghost_y)):
-        if bc != "periodic":
-            b = add_ghost_cells(b, axis, bc, ghost)
-    Bx, By = get_avg(b["bx"], b["by"])
+    Bx, By = _padded_cell_centered_field(bx, by, bc_x, bc_y, ghost_x, ghost_y, geom)
     for axis, bc in ((0, bc_x), (1, bc_y)):
         if bc != "periodic":
             Bx, By = strip_ghosts(Bx, axis), strip_ghosts(By, axis)
@@ -120,9 +183,9 @@ def constrained_transport(bx, by, flux_By_X, flux_Bx_Y, dx, dy, dt, geom=None):
     else:
         # d(b_R)/dt = -dE/dz
         dbx = -(Ez - jnp.roll(Ez, 1, axis=1)) / dy
-        # d(b_z)/dt = +(1/R) d(R E)/dR
+        # d(b_z)/dt = +(1/R) d(R E)/dR, with R at the middle of the z-face
         rE = geom["r_face_x"] * Ez
-        dby = (rE - jnp.roll(rE, 1, axis=0)) / (geom["r"] * dx)
+        dby = (rE - jnp.roll(rE, 1, axis=0)) / (geom["area_y"] / (2.0 * jnp.pi))
 
     bx_new = bx + dt * dbx
     by_new = by + dt * dby
@@ -494,14 +557,24 @@ def get_flux(WL, WR, gamma, riemann_solver):
 
 
 def hydro_mhd2d_timestep(
-    W, gamma, dx, dy, bc_x="periodic", bc_y="periodic", ghost_x=None, ghost_y=None
+    W,
+    gamma,
+    dx,
+    dy,
+    bc_x="periodic",
+    bc_y="periodic",
+    ghost_x=None,
+    ghost_y=None,
+    geom=None,
 ):
     """
     Calculate the simulation timestep based on CFL condition
     """
 
     rho, vx, vy, P = W["rho"], W["vx"], W["vy"], W["P"]
-    Bx, By = get_cell_centered_field(W["bx"], W["by"], bc_x, bc_y, ghost_x, ghost_y)
+    Bx, By = get_cell_centered_field(
+        W["bx"], W["by"], bc_x, bc_y, ghost_x, ghost_y, geom
+    )
     v_sq = vx**2 + vy**2
     B_sq = Bx**2 + By**2
     if "vz" in W:
@@ -649,6 +722,10 @@ def hydro_mhd2d_fluxes(
     x_has_ghosts = bc_x != "periodic"
     y_has_ghosts = bc_y != "periodic"
 
+    geom_bare = geom_strip(geom, x_has_ghosts)
+    Bx, By = _padded_cell_centered_field(
+        W["bx"], W["by"], bc_x, bc_y, ghost_x, ghost_y, geom_bare
+    )
     if x_has_ghosts:
         W = add_ghost_cells(W, 0, bc_x, ghost_x)
     if y_has_ghosts:
@@ -656,7 +733,6 @@ def hydro_mhd2d_fluxes(
 
     # get Conserved variables
     bx, by = W["bx"], W["by"]
-    Bx, By = get_avg(bx, by)
     Wc = {
         "rho": W["rho"],
         "vx": W["vx"],
@@ -731,8 +807,8 @@ def hydro_mhd2d_fluxes(
 
     # get Primitive variables, with the boundary faces set as at the start of
     # the step, so that the total pressure is consistent with the next step
-    Bx, By = get_cell_centered_field(bx, by, bc_x, bc_y, ghost_x, ghost_y)
-    W = get_primitive(U, Bx, By, gamma, geom_strip(geom, x_has_ghosts))
+    Bx, By = get_cell_centered_field(bx, by, bc_x, bc_y, ghost_x, ghost_y, geom_bare)
+    W = get_primitive(U, Bx, By, gamma, geom_bare)
     W["bx"], W["by"] = bx, by
 
     return W

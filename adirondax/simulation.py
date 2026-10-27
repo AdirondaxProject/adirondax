@@ -192,15 +192,17 @@ class Simulation:
     @property
     def m_per_hbar(self):
         """
-        Return the axion mass over hbar, m/hbar, in code units
+        Return the axion mass over hbar, m/hbar, in code units. The mass is
+        converted from eV with the physical speed of light, even if the
+        'constants' parameters set another.
         """
-        c = self.constants
+        physical = code_constants(self.params["units"])
         m = (
             self.params["quantum"]["m_eV"]
-            * c["electron_volt"]
-            / c["speed_of_light"] ** 2
+            * physical["electron_volt"]
+            / physical["speed_of_light"] ** 2
         )
-        hbar = c["planck_constant"] / (2.0 * math.pi)
+        hbar = self.constants["planck_constant"] / (2.0 * math.pi)
         return m / hbar
 
     @property
@@ -432,6 +434,10 @@ class Simulation:
         def driven_ghosts(state, axis, bc):
             return to_hydro(driven_boundary(state, axis)) if bc == "driven" else None
 
+        geom_bare = get_geometry(
+            self.geometry, self.box_size, self.resolution, r_min=self.origin[0]
+        )
+
         def cell_centered_field(state):
             return get_cell_centered_field(
                 state["bx"],
@@ -440,6 +446,7 @@ class Simulation:
                 bc_y,
                 driven_ghosts(state, 0, bc_x),
                 driven_ghosts(state, 1, bc_y),
+                geom_bare,
             )
 
         def driven_radiation(state, axis, bc, key):
@@ -479,6 +486,7 @@ class Simulation:
                             bc_y,
                             driven_ghosts(state, 0, bc_x),
                             driven_ghosts(state, 1, bc_y),
+                            geom_bare,
                         )
                     else:
                         dt_hydro = hydro_timestep(W, gamma, dx, dy)
@@ -613,7 +621,7 @@ class Simulation:
                         # of the step; split it again with those the
                         # boundary gives at the end, which the next step uses
                         Bx_0, By_0 = get_cell_centered_field(
-                            W["bx"], W["by"], bc_x, bc_y, ghost_x, ghost_y
+                            W["bx"], W["by"], bc_x, bc_y, ghost_x, ghost_y, geom_bare
                         )
                         Bx_1, By_1 = cell_centered_field(new_state)
                         dB_sq = Bx_1**2 + By_1**2 - Bx_0**2 - By_0**2

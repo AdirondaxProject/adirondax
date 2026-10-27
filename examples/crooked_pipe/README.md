@@ -11,7 +11,7 @@ Usage:
 python crooked_pipe.py
 ```
 
-Takes around 12 minutes to run on my macbook (cpu): 9 for the transport and 3
+Takes around 9 minutes to run on my macbook (cpu): 4 for the transport and 5
 for the diffusion. Run a single method with `--method transport` or
 `--method diffusion`.
 
@@ -29,12 +29,12 @@ allow.
 
 This is a standard test of radiation flowing through optically thin channels in
 optically thick material. Discrete ordinates transport (solid lines, 16
-directions) agrees with IMC: the temperatures at 1e-5 s are within 7%
-(0.277, 0.200, 0.163, 0.146 and 0.088 keV against 0.279, 0.201, 0.156, 0.137 and
-0.082 keV), and the pipe heats up at the right times, if a little late at the
-second point (2.6x) and the third and fourth (20%). That lag is set by the
-spatial resolution, rather than the angular: halving the cells cuts it
-from 5x to 2.6x, while 64 directions instead of 16 hardly change it.
+directions) agrees with IMC: the temperatures at 1e-5 s are within 12%
+(0.277, 0.202, 0.166, 0.150 and 0.092 keV against 0.279, 0.201, 0.156, 0.137 and
+0.082 keV), and the pipe heats up at the right times, to within 10% at the
+third and fourth points and 13% at the fifth, if late at the second (2.9x).
+That lag is set by the spatial resolution, rather than the angular: halving the
+cells shortens it, while 64 directions instead of 16 hardly change it.
 
 Flux-limited diffusion (dashed lines) fails, as it is known to: it carries the
 radiation around the bends far too easily, heats the third, fourth and fifth

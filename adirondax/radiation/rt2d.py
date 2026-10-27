@@ -119,7 +119,7 @@ def _face_coefficients(sigma_t, v, mu, c, dx, tau_factor, axis, bc):
 
     # optical depth per cell, guarded against tau = 0 (with a margin that keeps
     # the square roots below differentiable in single precision)
-    tau_sq = jnp.maximum((tau_factor * sigma_face * dx) ** 2, 1.0e-12)
+    tau_sq = jnp.maximum((4.0 * tau_factor * sigma_face * dx) ** 2, 1.0e-12)
     f_adv = -jnp.expm1(-tau_sq)
 
     # the signal speeds (eqs. A4, A5): 'up' is the speed on the upwind side,
@@ -185,7 +185,8 @@ def _minmod(a, b):
 def _advect_explicit(I, fv, axis, bc, angles, ghost):
     """
     Upwind flux of I with the face velocity fv along an axis, from a
-    slope-limited linear reconstruction (ghost cells get flat slopes)
+    slope-limited linear reconstruction (ghost cells get flat slopes, unless
+    periodic)
     """
 
     Ip = _pad_intensity(I, axis, bc, angles, ghost)
@@ -196,8 +197,11 @@ def _advect_explicit(I, fv, axis, bc, angles, ghost):
         return lax.slice_in_dim(Ip, a, n + b, axis=ax)
 
     slope = _minmod(sl(1, -1) - sl(0, -2), sl(2, 0) - sl(1, -1))
-    zero = jnp.zeros_like(lax.index_in_dim(slope, 0, ax))
-    slope = jnp.concatenate((zero, slope, zero), axis=ax)
+    if bc == "periodic":
+        lo, hi = lax.index_in_dim(slope, -1, ax), lax.index_in_dim(slope, 0, ax)
+    else:
+        lo = hi = jnp.zeros_like(lax.index_in_dim(slope, 0, ax))
+    slope = jnp.concatenate((lo, slope, hi), axis=ax)
 
     left = sl(0, -1) + 0.5 * lax.slice_in_dim(slope, 0, n - 1, axis=ax)
     right = sl(1, 0) - 0.5 * lax.slice_in_dim(slope, 1, n, axis=ax)
@@ -305,8 +309,11 @@ def _converged(update, x, x0, tol):
     return _norm1(update) <= tol * _norm1(x - x0) + floor
 
 
-def _jacobi(f, x0, tol, max_iter):
-    """The Jacobi-like iteration of Jiang (2021): x <- G(x) = x - f(x)"""
+def _jacobi(f, x0, tol, max_iter, omega=0.5):
+    """
+    The Jacobi-like iteration of Jiang (2021), under-relaxed (which the centered
+    fluxes of optically thick gas need to converge): x <- x - omega f(x)
+    """
 
     def cond(carry):
         x, dx, it = carry
@@ -314,7 +321,7 @@ def _jacobi(f, x0, tol, max_iter):
 
     def body(carry):
         x, _, it = carry
-        dx = -f(x)
+        dx = -omega * f(x)
         return x + dx, dx, it + 1
 
     x, _, _ = lax.while_loop(cond, body, body((x0, None, 0)))

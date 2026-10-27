@@ -129,7 +129,9 @@ def test_static_diffusion(limiter):
     E = E0[None, :, None] * jnp.ones((1, nx, ny))
     c, sigma, dt = 1e3, 4e4, 0.01
     opacity = {"sigma_s": sigma, "sigma_a": 0.0, "sigma_p": 0.0}
-    step = make_step(geom, dt, opacity, c=c, bc_x="outflow", flux_limiter=limiter)
+    step = make_step(
+        geom, dt, opacity, c=c, bc_x="outflow", flux_limiter=limiter, static=True
+    )
 
     W = gas(nx, ny)
     for _ in range(60):

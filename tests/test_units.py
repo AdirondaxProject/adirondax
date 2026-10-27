@@ -95,6 +95,10 @@ def test_axion_mass_sets_m_per_hbar():
     sim = make_sim(units={"length": kpc, "time": Gyr})
     assert sim.m_per_hbar == pytest.approx(m_per_hbar * kpc**2 / Gyr, rel=1e-12)
 
+    # a reduced speed of light (for the radiation) leaves the mass unchanged
+    sim = make_sim(constants={"speed_of_light": 1.0e5})
+    assert sim.m_per_hbar == pytest.approx(m_per_hbar, rel=1e-12)
+
 
 @pytest.mark.parametrize(
     "params",

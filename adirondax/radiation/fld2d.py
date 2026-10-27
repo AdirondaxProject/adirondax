@@ -29,28 +29,29 @@ LIMITERS = ("levermore_pomraning", "larsen", "max", "none")
 FACE_AVERAGES = ("power_law", "harmonic", "arithmetic")
 
 
-def _diffusion_coefficient(sigma, g, c, limiter):
+def _diffusion_coefficient(sigma, g, c, limiter, dx):
     """
     The flux-limited diffusion coefficient D = c lambda(R) / sigma, with
     R = g / sigma and g = |grad E| / E, written so as to stay finite when
-    sigma = 0 (free streaming, D = c / g)
+    sigma = 0 (free streaming, D = c / g). Both sigma and g are floored at an
+    optical depth of 1e-8 per cell of width dx.
     """
 
-    tiny = jnp.finfo(jnp.result_type(sigma, g)).tiny
+    floor = 1.0e-8 / dx
+    sigma = jnp.maximum(sigma, floor)
+    g = jnp.maximum(g, floor)
     if limiter == "levermore_pomraning":
         # lambda = (2 + R) / (6 + 3R + R^2)
-        D = (2.0 * sigma + g) / jnp.maximum(
-            6.0 * sigma**2 + 3.0 * sigma * g + g**2, tiny
-        )
+        D = (2.0 * sigma + g) / (6.0 * sigma**2 + 3.0 * sigma * g + g**2)
     elif limiter == "larsen":
         # lambda = (9 + R^2)^(-1/2)
-        D = 1.0 / jnp.sqrt(jnp.maximum(9.0 * sigma**2 + g**2, tiny))
+        D = 1.0 / jnp.sqrt(9.0 * sigma**2 + g**2)
     elif limiter == "max":
         # lambda = 1 / max(3, R)
-        D = 1.0 / jnp.maximum(jnp.maximum(3.0 * sigma, g), tiny)
+        D = 1.0 / jnp.maximum(3.0 * sigma, g)
     elif limiter == "none":
         # plain diffusion, lambda = 1/3
-        D = 1.0 / jnp.maximum(3.0 * sigma, tiny)
+        D = 1.0 / (3.0 * sigma)
     else:
         raise ValueError(f"unknown flux limiter: '{limiter}'")
 
@@ -90,7 +91,7 @@ def _power_law_opacity(s_lo, s_hi, E_lo, E_hi):
     return s_lo * _phi(u) / _phi(w)
 
 
-def _face_coefficient(s_lo, s_hi, g, c, limiter, face_average, E_lo, E_hi):
+def _face_coefficient(s_lo, s_hi, g, c, limiter, face_average, E_lo, E_hi, dx):
     """
     The diffusion coefficient D and the flux limiter lambda = sigma D / c on a
     face between cells of opacities s_lo and s_hi and energy densities E_lo and
@@ -110,7 +111,7 @@ def _face_coefficient(s_lo, s_hi, g, c, limiter, face_average, E_lo, E_hi):
         sigma = 2.0 * s_lo * s_hi / jnp.maximum(s_lo + s_hi, tiny)
     else:
         raise ValueError(f"unknown face average: '{face_average}'")
-    D = _diffusion_coefficient(sigma, g, c, limiter)
+    D = _diffusion_coefficient(sigma, g, c, limiter, dx)
     return D, sigma * D / c
 
 
@@ -178,26 +179,46 @@ def _conductance(E, sigma_t, dx, c, limiter, axis, bc, ghost, face_average):
     # downstream (which can make large implicit steps oscillate)
     E_up = jnp.maximum(jnp.abs(E_lo), jnp.abs(E_hi))
     g = jnp.abs(E_hi - E_lo) / jnp.maximum(dx * E_up, tiny)
-    k = _face_coefficient(s_lo, s_hi, g, c, limiter, face_average, E_lo, E_hi)[0] / dx
+    D, _ = _face_coefficient(s_lo, s_hi, g, c, limiter, face_average, E_lo, E_hi, dx)
+    k = D / dx
 
     if bc in _MIRRORED:
         zero = jnp.zeros_like(lax.index_in_dim(k, 0, axis + 1, keepdims=False))
         k = _set_ends(k, axis, zero, zero)
     elif bc in ("outflow", "driven"):
-        # the gradient across the half cell to the boundary is twice as steep
-        D_b = _face_coefficient(
-            s_lo, s_hi, 2.0 * g, c, limiter, face_average, E_lo, E_hi
-        )[0]
-        k_b = 1.0 / (0.5 * dx / jnp.maximum(D_b, tiny) + 2.0 / c)
         ax = axis + 1
-        k = _set_ends(
-            k,
-            axis,
-            lax.index_in_dim(k_b, 0, ax, keepdims=False),
-            lax.index_in_dim(k_b, -1, ax, keepdims=False),
+
+        def end(f, i):
+            return lax.index_in_dim(f, i, ax, keepdims=False)
+
+        k_lo = _marshak_conductance(
+            end(E_hi, 0), end(E_lo, 0), end(s_hi, 0), dx, c, limiter
         )
+        k_hi = _marshak_conductance(
+            end(E_lo, -1), end(E_hi, -1), end(s_lo, -1), dx, c, limiter
+        )
+        k = _set_ends(k, axis, k_lo, k_hi)
 
     return k
+
+
+def _marshak_conductance(E_c, E_g, sigma, dx, c, limiter):
+    """
+    The conductance from a boundary cell, of energy density E_c, to the ghost
+    energy density E_g: its half cell in series with the Marshak condition, with
+    the flux limiter evaluated from the gradient to the boundary value E_b
+    (estimated from the unlimited coefficient, and then refined once)
+    """
+
+    tiny = jnp.finfo(E_c.dtype).tiny
+    D = _diffusion_coefficient(sigma, 0.0, c, "none", dx)
+    for _ in range(2):
+        a = 2.0 * D / dx
+        E_b = (a * E_c + 0.5 * c * E_g) / (a + 0.5 * c)
+        E_up = jnp.maximum(jnp.abs(E_c), jnp.abs(E_b))
+        g = jnp.abs(E_c - E_b) / jnp.maximum(0.5 * dx * E_up, tiny)
+        D = _diffusion_coefficient(sigma, g, c, limiter, dx)
+    return 1.0 / (0.5 * dx / D + 2.0 / c)
 
 
 def _pad_edges(f, axis, bc):
@@ -230,7 +251,9 @@ def _flux_limiter(E, sigma_t, dx, limiter, axis, bc, ghost, face_average):
     # downstream (which can make large implicit steps oscillate)
     E_up = jnp.maximum(jnp.abs(E_lo), jnp.abs(E_hi))
     g = jnp.abs(E_hi - E_lo) / jnp.maximum(dx * E_up, tiny)
-    lam = _face_coefficient(s_lo, s_hi, g, 1.0, limiter, face_average, E_lo, E_hi)[1]
+    _, lam = _face_coefficient(
+        s_lo, s_hi, g, 1.0, limiter, face_average, E_lo, E_hi, dx
+    )
     if bc in _MIRRORED:
         zero = jnp.zeros_like(lax.index_in_dim(lam, 0, axis + 1, keepdims=False))
         lam = _set_ends(lam, axis, zero, zero)
@@ -295,11 +318,14 @@ def _moving_gas(
         terms.append((flux, force))
 
     (flux_x, force_x), (flux_y, force_y) = terms
-    work = W["vx"] * force_x + W["vy"] * force_y
-
-    E_new = E - dt * (_divergence(flux_x, flux_y, A_x, A_y, geom["vol"]) + work)
     d_mom_x = dt * jnp.sum(force_x, axis=0)
     d_mom_y = dt * jnp.sum(force_y, axis=0)
+    # the work at the time-centered velocity is the kinetic energy gained
+    vx_mid = W["vx"] + 0.5 * d_mom_x / W["rho"]
+    vy_mid = W["vy"] + 0.5 * d_mom_y / W["rho"]
+    work = vx_mid * force_x + vy_mid * force_y
+
+    E_new = E - dt * (_divergence(flux_x, flux_y, A_x, A_y, geom["vol"]) + work)
     d_energy = dt * jnp.sum(work, axis=0)
 
     return E_new, d_mom_x, d_mom_y, d_energy
@@ -549,21 +575,25 @@ def radiation_fld2d_step(
 
     # Each iteration holds the conductances at the current iterate (a Picard
     # linearization of the flux limiter), which keeps the grey system
-    # symmetric; the iterations converge to the fully implicit solution.
+    # symmetric; the iterations converge to the fully implicit solution. Both
+    # the update and the residual must be small, since the residual is what
+    # the gas receives, and it can be large for a small update where the
+    # conductances are large.
     def solve(f, x0):
         def cond(carry):
-            x, dx, it = carry
-            return ~_converged(dx, x, E, tol) & (it < max_newton)
+            x, dx, r, it = carry
+            converged = _converged(dx, x, E, tol) & _converged(r, x, E, tol)
+            return ~converged & (it < max_newton)
 
         def body(carry):
-            x, _, it = carry
+            x, _, _, it = carry
             cond_x = conductances(x)
             r, f_lin = jax.linearize(lambda e: residual_with(e, cond_x), x)
             diag = diag_exchange + diffusion_diag(cond_x)
             dx = linear_solve(f_lin, -r, 0.1 * tol, diag, num_groups == 1)
-            return x + dx, dx, it + 1
+            return x + dx, dx, r, it + 1
 
-        x, _, _ = lax.while_loop(cond, body, body((x0, None, 0)))
+        x, _, _, _ = lax.while_loop(cond, body, body((x0, None, None, 0)))
         return x
 
     # the exact linearization, which includes the derivatives of the flux

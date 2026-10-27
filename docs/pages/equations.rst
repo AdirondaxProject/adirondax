@@ -300,6 +300,10 @@ Terms that genuinely require a :math:`1/R` use the volume-centroid radius
    \bar{R}_i = \frac{2}{3}\,
      \frac{R_{i+1/2}^3 - R_{i-1/2}^3}{R_{i+1/2}^2 - R_{i-1/2}^2}
 
+except the constrained-transport update of :math:`b_z`, which uses the middle
+radius of the annular face, :math:`(R_{i+1/2} + R_{i-1/2})/2`, so that the
+magnetic flux through it is conserved exactly.
+
 which equals :math:`\tfrac{2}{3}\Delta R` in the cell on the axis and so is
 never zero.
 
@@ -375,7 +379,7 @@ The implicit equations of each cell (all its groups and directions, and its
 temperature) are solved directly, which reduces to one scalar equation for the
 temperature. This local solve preconditions a Newton-Krylov (GMRES) iteration
 over the whole mesh (``radiation.solver = 'gmres'``), or is iterated on its
-own as in Jiang (2021) (``'jacobi'``). The solve is differentiated implicitly,
+own as in Jiang (2021), under-relaxed by a factor of 1/2 (``'jacobi'``). The solve is differentiated implicitly,
 so gradients through it cost one more linear solve, and do not depend on how
 many iterations it took.
 
